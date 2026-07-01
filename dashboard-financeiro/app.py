@@ -453,6 +453,25 @@ def remover_repasses_maquininha_do_banco(
     return movimentos[~repasse_maquininha].copy()
 
 
+def remover_repasses_clinipay_do_banco(
+    df_banco: Optional[pd.DataFrame],
+    df_clinipay: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    if df_banco is None or df_banco.empty:
+        return pd.DataFrame() if df_banco is None else df_banco.copy()
+    if df_clinipay is None or df_clinipay.empty or "memo" not in df_banco.columns:
+        return df_banco.copy()
+
+    movimentos = df_banco.copy()
+    memorandos = movimentos["memo"].fillna("").map(normalizar_texto)
+    valores = pd.to_numeric(movimentos.get("valor", 0), errors="coerce").fillna(0)
+    repasse_clinipay = (valores > 0) & memorandos.str.contains(
+        r"clinipay|clini\s*pay|clinicorp\s*pay|clinicorp",
+        regex=True,
+    )
+    return movimentos[~repasse_clinipay].copy()
+
+
 def calcular_antecipacoes(
     df_extrato: Optional[pd.DataFrame],
 ) -> Dict[str, float]:
@@ -3990,6 +4009,10 @@ if recebimentos_infinity_extrato_periodo > 0:
     df_banco_conciliacao_periodo = remover_repasses_maquininha_do_banco(
         df_banco_conciliacao_periodo
     )
+df_banco_conciliacao_periodo = remover_repasses_clinipay_do_banco(
+    df_banco_conciliacao_periodo,
+    df_clinipay_base_periodo,
+)
 creditos_banco_infinity_periodo = (
     float(df_creditos_banco_infinity_periodo["valor"].sum())
     if not df_creditos_banco_infinity_periodo.empty else 0.0
