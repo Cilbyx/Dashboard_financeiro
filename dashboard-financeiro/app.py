@@ -74,65 +74,121 @@ load_css()
 st.markdown(
     """
     <style>
-    .kpi-card {
-        background: #11112A;
-        border: 1px solid #2A2A4A;
-        border-radius: 10px;
-        padding: 1.35rem 1.45rem;
-        min-height: 138px;
-        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.18);
+    .stMainBlockContainer,
+    [data-testid="stMainBlockContainer"],
+    .block-container {
+        max-width: 1680px !important;
+        padding: 4.25rem clamp(28px, 4vw, 72px) 3rem !important;
     }
-    .kpi-card.green { border-color: #1D9E75; }
-    .kpi-card.neutral { border-color: #3A3A66; }
-    .kpi-card.blue { border-color: #4B8CFF; }
-    .kpi-card.purple { border-color: #6B5CE7; }
+    .kpi-card {
+        min-height: 142px;
+        padding: 1.25rem 1.3rem;
+        background: linear-gradient(145deg, #121426, #0f1120);
+        border: 1px solid #272744;
+        border-top: 3px solid #4b4d65;
+        border-radius: 13px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, .18);
+    }
+    .kpi-card.green { border-top-color: #2fc792; }
+    .kpi-card.neutral { border-top-color: #7b7e98; }
+    .kpi-card.blue { border-top-color: #68a9ed; }
+    .kpi-card.purple { border-top-color: #7167dc; }
     .kpi-label {
-        color: #B6B8F6;
-        font-size: 0.72rem;
-        font-weight: 800;
-        letter-spacing: 0.08em;
+        margin-bottom: .65rem;
+        color: #a4a6bc;
+        font-size: .82rem;
+        font-weight: 700;
+        letter-spacing: .055em;
         text-transform: uppercase;
-        margin-bottom: 0.85rem;
     }
     .kpi-value {
-        color: #F7F7FF;
-        font-family: "DM Mono", monospace;
-        font-size: 1.55rem;
-        font-weight: 800;
-        line-height: 1.18;
-        margin-bottom: 0.8rem;
+        color: #e7e9f3;
+        font-family: "DM Mono", Consolas, monospace;
+        font-size: clamp(1.3rem, 1.7vw, 1.75rem);
+        font-weight: 700;
+        line-height: 1.2;
         overflow-wrap: anywhere;
     }
-    .kpi-value.green, .green { color: #35E09C; }
-    .kpi-value.red, .red { color: #FF7185; }
-    .kpi-value.blue, .blue { color: #63A5FF; }
+    .kpi-value.green,
+    .valor-pos,
+    .variacao-pos { color: #2fc792 !important; }
+    .kpi-value.red,
+    .valor-neg,
+    .variacao-neg { color: #f07f91 !important; }
+    .kpi-value.blue { color: #68a9ed !important; }
     .kpi-footer {
-        color: #8E91D8;
-        font-size: 0.82rem;
-        line-height: 1.45;
+        margin-top: .8rem;
+        color: #77799d;
+        font-size: .86rem;
+        line-height: 1.4;
     }
     .comp-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 0.9rem;
-        color: #F7F7FF;
-        font-size: 0.92rem;
+        gap: 1rem;
+        margin: .55rem 0 .35rem;
+        color: #b7b9cc;
+        font-size: .92rem;
         font-weight: 700;
-        margin-bottom: 0.42rem;
     }
     .comp-bar-bg {
         width: 100%;
         height: 6px;
-        background: #20203A;
-        border-radius: 999px;
         overflow: hidden;
-        margin-bottom: 0.82rem;
+        background: #1b1d2d;
+        border-radius: 99px;
+        margin-bottom: .82rem;
     }
     .comp-bar-fill {
         height: 100%;
         min-width: 4px;
-        border-radius: 999px;
+        border-radius: inherit;
+    }
+    .fin-table,
+    .dre-table {
+        width: 100%;
+        overflow: hidden;
+        color: #cfd1df;
+        background: #10121f;
+        border: 1px solid #272744;
+        border-collapse: separate;
+        border-spacing: 0;
+        border-radius: 12px;
+        font-size: .95rem;
+    }
+    .fin-table th,
+    .dre-table th {
+        padding: .85rem 1rem;
+        color: #8e91ad;
+        background: #15172a;
+        border-bottom: 1px solid #272744;
+        font-size: .78rem;
+        font-weight: 700;
+        letter-spacing: .06em;
+        text-align: left;
+        text-transform: uppercase;
+    }
+    .fin-table td,
+    .dre-table td {
+        padding: .8rem 1rem;
+        border-bottom: 1px solid #202236;
+    }
+    .assistant-top-button [data-testid="stButton"] button,
+    div[data-testid="stButton"] button[kind="primary"] {
+        border-radius: 999px !important;
+        background: linear-gradient(135deg, #7167dc, #4f8cff) !important;
+        border: 1px solid rgba(160, 165, 255, .38) !important;
+        box-shadow: 0 14px 34px rgba(0, 0, 0, .30) !important;
+        font-weight: 800 !important;
+    }
+    [data-testid="stDialog"] {
+        background: #0f1120 !important;
+    }
+    [data-testid="stChatMessage"] {
+        background: #111326;
+        border: 1px solid #252844;
+        border-radius: 10px;
     }
     </style>
     """,
@@ -4186,12 +4242,33 @@ elif st.session_state.pagina == "visao":
         - retiradas_periodo
     )
 
+    _, topo_assistente = st.columns([4, 1.15])
+    with topo_assistente:
+        st.markdown('<div class="assistant-top-button">', unsafe_allow_html=True)
+        if st.button(
+            "💬 Assistente",
+            use_container_width=True,
+            type="primary",
+            key="abrir_assistente_financeiro_topo",
+        ):
+            abrir_assistente(
+                periodo_label,
+                recebimentos_periodo,
+                vendas_aprovadas_periodo,
+                custos_fixos_periodo + custos_variaveis_periodo,
+                custos_fixos_periodo,
+                custos_variaveis_periodo,
+                retiradas_periodo,
+                antecipacoes_lucro_periodo,
+            )
+        st.markdown('</div>', unsafe_allow_html=True)
+
     k1, k2, k3, k4 = st.columns(4)
     with k1:
         st.markdown(f"""
         <div class="kpi-card green">
             <div class="kpi-label">Recebimentos</div>
-            <div class="kpi-value">{fmt_brl(recebimentos_periodo)}</div>
+            <div class="kpi-value green">{fmt_brl(recebimentos_periodo)}</div>
             <div class="kpi-footer">{"Caixa, maquininhas e banco direto" if recebimentos_belle_periodo > 0 else "Recebimentos identificados das vendas"}</div>
         </div>""", unsafe_allow_html=True)
     with k2:
@@ -4237,7 +4314,7 @@ elif st.session_state.pagina == "visao":
             f"""
             <div class="kpi-card green">
                 <div class="kpi-label">Valor antecipado (bruto)</div>
-                <div class="kpi-value">{fmt_brl(antecipacoes_periodo["recebido"])}</div>
+                <div class="kpi-value green">{fmt_brl(antecipacoes_periodo["recebido"])}</div>
                 <div class="kpi-footer">Total antes das taxas</div>
             </div>
             """,
@@ -4429,27 +4506,6 @@ elif st.session_state.pagina == "visao":
             st.markdown(
                 f'<div style="font-size:0.78rem;color:#4A4A7A">{mensagem_recebimentos}</div>',
                 unsafe_allow_html=True,
-            )
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    _, coluna_assistente = st.columns([4, 1.2])
-    with coluna_assistente:
-        st.markdown('<div class="assistant-fab-anchor"></div>', unsafe_allow_html=True)
-        if st.button(
-            "💬 Abrir assistente",
-            use_container_width=True,
-            type="primary",
-            key="abrir_assistente_financeiro",
-        ):
-            abrir_assistente(
-                periodo_label,
-                recebimentos_periodo,
-                vendas_aprovadas_periodo,
-                custos_fixos_periodo + custos_variaveis_periodo,
-                custos_fixos_periodo,
-                custos_variaveis_periodo,
-                retiradas_periodo,
-                antecipacoes_lucro_periodo,
             )
 
 # =========================
