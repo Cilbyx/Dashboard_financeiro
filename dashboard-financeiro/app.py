@@ -74,6 +74,22 @@ load_css()
 st.markdown(
     """
     <style>
+    .page-title {
+        margin: 0 0 .35rem 0 !important;
+        color: #f3f5ff !important;
+        font-size: clamp(2rem, 3.1vw, 3.15rem) !important;
+        font-weight: 850 !important;
+        line-height: 1.05 !important;
+        letter-spacing: 0 !important;
+    }
+    .page-subtitle {
+        margin-top: .35rem !important;
+        margin-bottom: 1.55rem !important;
+        color: #a7aac9 !important;
+        font-size: clamp(1rem, 1.25vw, 1.22rem) !important;
+        font-weight: 650 !important;
+        line-height: 1.45 !important;
+    }
     .stMainBlockContainer,
     [data-testid="stMainBlockContainer"],
     .block-container {
@@ -190,6 +206,28 @@ st.markdown(
         border: 1px solid #252844;
         border-radius: 10px;
     }
+    .machine-delta {
+        display: inline-flex;
+        align-items: center;
+        margin-top: .75rem;
+        padding: .28rem .62rem;
+        border-radius: 999px;
+        font-family: "DM Mono", Consolas, monospace;
+        font-size: .78rem;
+        font-weight: 800;
+    }
+    .machine-delta.positive {
+        color: #35e09c;
+        background: rgba(47, 199, 146, .16);
+    }
+    .machine-delta.negative {
+        color: #ff7185;
+        background: rgba(240, 127, 145, .16);
+    }
+    .machine-delta.neutral {
+        color: #a7aac9;
+        background: rgba(167, 170, 201, .12);
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -203,6 +241,10 @@ def fmt_brl(valor: float, sinal: bool = False) -> str:
         return "R$ 0,00"
     prefix = "+R$ " if sinal and valor >= 0 else "R$ "
     return f"{prefix}{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def fmt_brl_chat(valor: float, sinal: bool = False) -> str:
+    return fmt_brl(valor, sinal=sinal).replace("$", r"\$")
 
 
 def texto_html(valor, limite: Optional[int] = None) -> str:
@@ -831,36 +873,36 @@ def resposta_assistente(
     if any(p in texto for p in ["receita", "recebimento", "entrada", "faturei"]):
         return (
             f"No período {periodo_label}, os recebimentos totalizam "
-            f"**{fmt_brl(recebimentos_periodo)}**."
+            f"{fmt_brl_chat(recebimentos_periodo)}."
         )
     if "retirada" in texto or "distribuicao" in texto:
         return (
-            f"A retirada de lucro no período é **{fmt_brl(retiradas_periodo)}**. "
+            f"A retirada de lucro no período é {fmt_brl_chat(retiradas_periodo)}. "
             "Ela é identificada pela categoria e apresentada separadamente dos "
             "demais custos variáveis."
         )
     if any(p in texto for p in ["despesa", "gasto", "custo"]):
         return (
-            f"As despesas somam **{fmt_brl(despesas_periodo)}**: "
-            f"{fmt_brl(custos_fixos_periodo)} em custos fixos, "
-            f"{fmt_brl(custos_variaveis_periodo)} em custos variáveis. "
+            f"As despesas somam {fmt_brl_chat(despesas_periodo)}.\n\n"
+            f"Custos fixos: {fmt_brl_chat(custos_fixos_periodo)}.\n\n"
+            f"Custos variáveis: {fmt_brl_chat(custos_variaveis_periodo)}.\n\n"
             f"A retirada de lucro, apresentada à parte, é "
-            f"{fmt_brl(retiradas_periodo)} e a antecipação de lucro é "
-            f"{fmt_brl(antecipacoes_lucro_periodo)}."
+            f"{fmt_brl_chat(retiradas_periodo)} e a antecipação de lucro é "
+            f"{fmt_brl_chat(antecipacoes_lucro_periodo)}."
         )
     if any(p in texto for p in ["resultado", "lucro", "prejuizo", "margem"]):
         situacao = "positivo" if resultado_operacional_periodo >= 0 else "negativo"
         margem_txt = f"{margem_operacional:.1f}".replace(".", ",")
         return (
-            f"Resultado operacional: {fmt_brl(resultado_operacional_periodo)} "
-            f"({situacao}), com margem de {margem_txt}%. "
-            f"Retirada de lucro: {fmt_brl(retiradas_periodo)}. "
-            f"Antecipação de lucro: {fmt_brl(antecipacoes_lucro_periodo)}. "
+            f"Resultado operacional: {fmt_brl_chat(resultado_operacional_periodo)} "
+            f"({situacao}), com margem de {margem_txt}%.\n\n"
+            f"Retirada de lucro: {fmt_brl_chat(retiradas_periodo)}.\n\n"
+            f"Antecipação de lucro: {fmt_brl_chat(antecipacoes_lucro_periodo)}.\n\n"
             f"Resultado final após esses abatimentos: "
-            f"{fmt_brl(resultado_final_periodo)}."
+            f"{fmt_brl_chat(resultado_final_periodo)}."
         )
     if any(p in texto for p in ["periodo", "mensal", "bimestral", "trimestral", "anual"]):
-        return f"A análise exibida considera o período **{periodo_label}**."
+        return f"A análise exibida considera o período {periodo_label}."
     if any(p in texto for p in ["importar", "arquivo", "excel", "ofx"]):
         if st.session_state.get("share_mode"):
             return (
@@ -880,7 +922,7 @@ def resposta_assistente(
 
     return (
         "Ainda não tenho uma resposta padrão para essa pergunta. "
-        "Entre em contato com o **suporte financeiro** para uma orientação específica."
+        "Entre em contato com o suporte financeiro para uma orientação específica."
     )
 
 
@@ -4949,21 +4991,60 @@ elif st.session_state.pagina == "detalhes":
                 creditos_banco_infinity_periodo - saidas_infinity_periodo
             )
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric(
-                "Entradas maquininhas",
-                fmt_brl(recebimentos_infinity_extrato_periodo),
+            delta_entradas_cls = (
+                "positive" if diferenca_entradas > 0
+                else "negative" if diferenca_entradas < 0
+                else "neutral"
             )
-            c2.metric(
-                "Maquininhas no sistema",
-                fmt_brl(recebimentos_infinity_sistema_periodo),
-                delta=fmt_brl(diferenca_entradas, sinal=True),
+            delta_saidas_cls = (
+                "positive" if diferenca_saidas > 0
+                else "negative" if diferenca_saidas < 0
+                else "neutral"
             )
-            c3.metric("Saídas maquininhas", fmt_brl(saidas_infinity_periodo))
-            c4.metric(
-                "Banco/OFX compatível",
-                fmt_brl(creditos_banco_infinity_periodo),
-                delta=fmt_brl(diferenca_saidas, sinal=True),
-            )
+            with c1:
+                st.markdown(
+                    f"""
+                    <div class="kpi-card green" style="margin-bottom:1rem">
+                        <div class="kpi-label">Entradas maquininhas</div>
+                        <div class="kpi-value green">{fmt_brl(recebimentos_infinity_extrato_periodo)}</div>
+                        <div class="kpi-footer">Total localizado no extrato</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with c2:
+                st.markdown(
+                    f"""
+                    <div class="kpi-card blue" style="margin-bottom:1rem">
+                        <div class="kpi-label">Maquininhas no sistema</div>
+                        <div class="kpi-value blue">{fmt_brl(recebimentos_infinity_sistema_periodo)}</div>
+                        <div class="machine-delta {delta_entradas_cls}">{fmt_brl(diferenca_entradas, sinal=True)}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with c3:
+                st.markdown(
+                    f"""
+                    <div class="kpi-card neutral" style="margin-bottom:1rem">
+                        <div class="kpi-label">Saídas maquininhas</div>
+                        <div class="kpi-value red">{fmt_brl(saidas_infinity_periodo)}</div>
+                        <div class="kpi-footer">Repasses e saídas identificadas</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with c4:
+                st.markdown(
+                    f"""
+                    <div class="kpi-card purple" style="margin-bottom:1rem">
+                        <div class="kpi-label">Banco/OFX compatível</div>
+                        <div class="kpi-value green">{fmt_brl(creditos_banco_infinity_periodo)}</div>
+                        <div class="machine-delta {delta_saidas_cls}">{fmt_brl(diferenca_saidas, sinal=True)}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
             rows = ""
             for _, row in df_infinity_base_periodo.sort_values(
