@@ -9,6 +9,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 from urllib.parse import urlsplit, urlunsplit
 import logging
 import unicodedata
@@ -3043,7 +3044,7 @@ if not st.session_state.user:
 # =========================
 user: User = st.session_state.user
 current_month = (
-    datetime.now().strftime("%B %Y")
+    datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%B %Y")
     .replace("January","Janeiro").replace("February","Fevereiro")
     .replace("March","Março").replace("April","Abril")
     .replace("May","Maio").replace("June","Junho")
@@ -4748,30 +4749,66 @@ elif st.session_state.pagina == "detalhes":
                 unsafe_allow_html=True,
             )
             rec_caixa, rec_infinity, rec_banco, rec_transfer, rec_suspeitas = st.columns(5)
-            rec_caixa.metric(
-                rotulo_caixa_recebimentos,
-                fmt_brl(recebimentos_caixa_belle_periodo),
+            valor_maquininhas_detalhes = (
+                recebimentos_infinity_extrato_periodo
+                if recebimentos_infinity_extrato_periodo > 0
+                else recebimentos_infinity_sistema_periodo
             )
-            rec_infinity.metric(
-                "Maquininhas",
-                fmt_brl(
-                    recebimentos_infinity_extrato_periodo
-                    if recebimentos_infinity_extrato_periodo > 0
-                    else recebimentos_infinity_sistema_periodo
+            valor_suspeitas_detalhes = somar_recebido_belle(
+                df_vendas_suspeitas_infinity_periodo
+            )
+            cards_recebimentos = [
+                (
+                    rec_caixa,
+                    rotulo_caixa_recebimentos,
+                    recebimentos_caixa_belle_periodo,
+                    "green",
+                    "Entradas em dinheiro/caixa",
                 ),
-            )
-            rec_banco.metric(
-                "Banco direto",
-                fmt_brl(conciliacao_banco_detalhes["total"]),
-            )
-            rec_transfer.metric(
-                "Transferências retiradas",
-                fmt_brl(creditos_banco_infinity_periodo),
-            )
-            rec_suspeitas.metric(
-                "Não identificadas",
-                fmt_brl(somar_recebido_belle(df_vendas_suspeitas_infinity_periodo)),
-            )
+                (
+                    rec_infinity,
+                    "Maquininhas",
+                    valor_maquininhas_detalhes,
+                    "blue",
+                    "Extratos de cartão conciliados",
+                ),
+                (
+                    rec_banco,
+                    "Banco direto",
+                    conciliacao_banco_detalhes["total"],
+                    "green",
+                    "Créditos localizados no OFX",
+                ),
+                (
+                    rec_transfer,
+                    "Transferências retiradas",
+                    creditos_banco_infinity_periodo,
+                    "neutral",
+                    "Repasses já descontados",
+                ),
+                (
+                    rec_suspeitas,
+                    "Não identificadas",
+                    valor_suspeitas_detalhes,
+                    "purple",
+                    "Diferenças para auditoria",
+                ),
+            ]
+            for coluna, titulo, valor, cor_card, rodape in cards_recebimentos:
+                valor_classe = "red" if titulo == "Transferências retiradas" else (
+                    "blue" if cor_card == "blue" else "green"
+                )
+                with coluna:
+                    st.markdown(
+                        f"""
+                        <div class="kpi-card {cor_card}" style="margin-bottom:1rem">
+                            <div class="kpi-label">{texto_html(titulo)}</div>
+                            <div class="kpi-value {valor_classe}">{fmt_brl(valor)}</div>
+                            <div class="kpi-footer">{texto_html(rodape)}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
             df_banco_rec = conciliacao_banco_detalhes[
                 "creditos_conciliados"
             ].copy()
