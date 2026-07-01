@@ -71,6 +71,74 @@ def load_css():
 
 load_css()
 
+st.markdown(
+    """
+    <style>
+    .kpi-card {
+        background: #11112A;
+        border: 1px solid #2A2A4A;
+        border-radius: 10px;
+        padding: 1.35rem 1.45rem;
+        min-height: 138px;
+        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.18);
+    }
+    .kpi-card.green { border-color: #1D9E75; }
+    .kpi-card.neutral { border-color: #3A3A66; }
+    .kpi-card.blue { border-color: #4B8CFF; }
+    .kpi-card.purple { border-color: #6B5CE7; }
+    .kpi-label {
+        color: #B6B8F6;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 0.85rem;
+    }
+    .kpi-value {
+        color: #F7F7FF;
+        font-family: "DM Mono", monospace;
+        font-size: 1.55rem;
+        font-weight: 800;
+        line-height: 1.18;
+        margin-bottom: 0.8rem;
+        overflow-wrap: anywhere;
+    }
+    .kpi-value.green, .green { color: #35E09C; }
+    .kpi-value.red, .red { color: #FF7185; }
+    .kpi-value.blue, .blue { color: #63A5FF; }
+    .kpi-footer {
+        color: #8E91D8;
+        font-size: 0.82rem;
+        line-height: 1.45;
+    }
+    .comp-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.9rem;
+        color: #F7F7FF;
+        font-size: 0.92rem;
+        font-weight: 700;
+        margin-bottom: 0.42rem;
+    }
+    .comp-bar-bg {
+        width: 100%;
+        height: 6px;
+        background: #20203A;
+        border-radius: 999px;
+        overflow: hidden;
+        margin-bottom: 0.82rem;
+    }
+    .comp-bar-fill {
+        height: 100%;
+        min-width: 4px;
+        border-radius: 999px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # =========================
 # HELPERS
 # =========================
