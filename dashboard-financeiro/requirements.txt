@@ -1,0 +1,10 @@
+streamlit
+pandas
+plotly
+openpyxl
+xlrd>=2.0.1
+odfpy
+pypdf
+PyPDF2
+pdfplumber
+python-docx
