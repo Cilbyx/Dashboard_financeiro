@@ -5,6 +5,7 @@ import json
 import subprocess
 import tempfile
 import re
+import sqlite3
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -35,8 +36,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _connect_db_compat():
+    if hasattr(database_module, "connect_db"):
+        return database_module.connect_db()
+    db_path = getattr(database_module, "DATABASE", None)
+    if not db_path:
+        data_dir = os.environ.get("DASHBOARD_DATA_DIR")
+        base_dir = Path(data_dir).expanduser() if data_dir else Path(__file__).resolve().parent
+        db_path = base_dir / "database.db"
+    db_path = Path(db_path).expanduser()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    return sqlite3.connect(str(db_path))
+
+
 def _garantir_tabela_relatorios_salvos():
-    conn = database_module.connect_db()
+    conn = _connect_db_compat()
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS saved_reports (
@@ -66,7 +80,7 @@ def _create_saved_report_fallback(
     period_end=None,
 ):
     _garantir_tabela_relatorios_salvos()
-    conn = database_module.connect_db()
+    conn = _connect_db_compat()
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO saved_reports (
@@ -88,7 +102,7 @@ def _create_saved_report_fallback(
 
 def _list_saved_reports_fallback(user_id):
     _garantir_tabela_relatorios_salvos()
-    conn = database_module.connect_db()
+    conn = _connect_db_compat()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT id, client_name, title, summary, period_start, period_end, created_at
@@ -103,7 +117,7 @@ def _list_saved_reports_fallback(user_id):
 
 def _get_saved_report_fallback(report_id, user_id):
     _garantir_tabela_relatorios_salvos()
-    conn = database_module.connect_db()
+    conn = _connect_db_compat()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT id, client_name, title, payload, summary, period_start, period_end, created_at
@@ -117,7 +131,7 @@ def _get_saved_report_fallback(report_id, user_id):
 
 def _delete_saved_report_fallback(report_id, user_id):
     _garantir_tabela_relatorios_salvos()
-    conn = database_module.connect_db()
+    conn = _connect_db_compat()
     cursor = conn.cursor()
     cursor.execute("""
         DELETE FROM saved_reports
