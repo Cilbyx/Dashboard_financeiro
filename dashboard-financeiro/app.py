@@ -16,12 +16,11 @@ import unicodedata
 from typing import Optional, Tuple, Dict, List
 from dataclasses import dataclass
 from pathlib import Path
+import database as database_module
 from database import (
     criar_tabelas, create_user, login_user, get_all_users, delete_user_by_admin,
     add_conta, get_contas, create_shared_report,
     get_shared_report, list_shared_reports, revoke_shared_report,
-    create_saved_report, list_saved_reports, get_saved_report,
-    delete_saved_report,
     verify_admin_password, create_password_reset_code, reset_password_with_code,
     bootstrap_admin_from_env
 )
@@ -34,6 +33,122 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def _garantir_tabela_relatorios_salvos():
+    conn = database_module.connect_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS saved_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            client_name TEXT NOT NULL,
+            title TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            summary TEXT,
+            period_start DATE,
+            period_end DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def _create_saved_report_fallback(
+    user_id,
+    client_name,
+    title,
+    payload,
+    summary=None,
+    period_start=None,
+    period_end=None,
+):
+    _garantir_tabela_relatorios_salvos()
+    conn = database_module.connect_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO saved_reports (
+            user_id, client_name, title, payload, summary, period_start, period_end
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        user_id,
+        client_name,
+        title,
+        payload,
+        summary,
+        period_start,
+        period_end,
+    ))
+    conn.commit()
+    conn.close()
+
+
+def _list_saved_reports_fallback(user_id):
+    _garantir_tabela_relatorios_salvos()
+    conn = database_module.connect_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, client_name, title, summary, period_start, period_end, created_at
+        FROM saved_reports
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+    """, (user_id,))
+    reports = cursor.fetchall()
+    conn.close()
+    return reports
+
+
+def _get_saved_report_fallback(report_id, user_id):
+    _garantir_tabela_relatorios_salvos()
+    conn = database_module.connect_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, client_name, title, payload, summary, period_start, period_end, created_at
+        FROM saved_reports
+        WHERE id = ? AND user_id = ?
+    """, (report_id, user_id))
+    report = cursor.fetchone()
+    conn.close()
+    return report
+
+
+def _delete_saved_report_fallback(report_id, user_id):
+    _garantir_tabela_relatorios_salvos()
+    conn = database_module.connect_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        DELETE FROM saved_reports
+        WHERE id = ? AND user_id = ?
+    """, (report_id, user_id))
+    changed = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return changed
+
+
+create_saved_report = getattr(
+    database_module,
+    "create_saved_report",
+    _create_saved_report_fallback,
+)
+list_saved_reports = getattr(
+    database_module,
+    "list_saved_reports",
+    _list_saved_reports_fallback,
+)
+get_saved_report = getattr(
+    database_module,
+    "get_saved_report",
+    _get_saved_report_fallback,
+)
+delete_saved_report = getattr(
+    database_module,
+    "delete_saved_report",
+    _delete_saved_report_fallback,
+)
 
 # =========================
 # CLIENTES
