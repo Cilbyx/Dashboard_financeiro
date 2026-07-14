@@ -508,6 +508,36 @@ def normalizar_texto(valor) -> str:
     return "".join(c for c in texto if not unicodedata.combining(c)).lower().strip()
 
 
+def nome_banco_brasileiro(codigo_ou_nome) -> str:
+    banco = str(codigo_ou_nome or "").strip()
+    if not banco:
+        return "Banco"
+    banco_limpo = re.sub(r"\D", "", banco)
+    bancos = {
+        "001": "Banco do Brasil",
+        "033": "Santander",
+        "041": "Banrisul",
+        "077": "Banco Inter",
+        "104": "Caixa Econômica Federal",
+        "136": "Unicred",
+        "197": "Stone",
+        "208": "BTG Pactual",
+        "212": "Banco Original",
+        "237": "Bradesco",
+        "260": "Nubank",
+        "290": "PagBank",
+        "323": "Mercado Pago",
+        "336": "C6 Bank",
+        "341": "Itaú",
+        "380": "PicPay",
+        "422": "Banco Safra",
+        "655": "Banco Votorantim",
+        "748": "Sicredi",
+        "756": "Sicoob",
+    }
+    return bancos.get(banco_limpo.zfill(3), banco)
+
+
 def parse_data_flexivel(valores) -> pd.Series:
     """Converte datas em texto e datas seriais do Excel."""
     datas = pd.to_datetime(valores, dayfirst=True, errors="coerce")
@@ -663,49 +693,78 @@ def filtrar_fornecedores_producao(df: Optional[pd.DataFrame]) -> pd.DataFrame:
         return pd.DataFrame()
 
     base = df.copy()
-    fornecedores_incluir = [
-        "adyen latin america",
-        "alexandre santana",
-        "retatrutide",
-        "balk produtos hospitalares",
-        "bio meds pharmaceutica",
-        "biometik",
-        "cellgenic brasil",
-        "central farma ipatinga",
-        "cliviva centro medico",
-        "comercial ramos materiais",
-        "dermege",
-        "drogaria sao paulo",
-        "drogasil",
-        "dux company",
-        "fastshop",
-        "flexsiv",
-        "felipe fernandes",
-        "gpz comercial",
-        "genesysmed",
-        "health tech farmacia",
-        "infinity suplementos",
-        "elmeco",
-        "ecwc tecnologia",
-        "essential",
-        "trique comercio",
-        "supermed",
-        "stin pharma excelencia",
-        "quantity servicos e comercio",
-        "international skin solution",
-        "instituto de imunologia",
-        "inp industrias de alimentos",
-        "magazine medica",
-        "medpharma medicamentos",
-        "meicos",
-        "mercado livre",
-        "nitratus pharma",
-        "neck profissionais",
-        "la vie legacy labs produtos",
-        "onco prod distribuido",
-        "toskani medsan",
-        "pharmacia essentia",
-    ]
+    fornecedores_catalogo = {
+        "ADYEN LATIN AMERICA": ["adyen latin america"],
+        "ALEXANDRE SANTANA / RETATRUTIDE": [
+            "alexandre santana",
+            "alexandre santana retatrutide",
+            "retatrutide",
+        ],
+        "BALK PRODUTOS HOSPITALARES": ["balk produtos hospitalares"],
+        "BIO MEDS PHARMACEUTICA LTDA": [
+            "bio meds pharmaceutica",
+            "bio meds pharmaceutica ltda",
+            "biomeds",
+        ],
+        "BIOMETIK": ["biometik"],
+        "CELLGENIC BRASIL": ["cellgenic brasil", "cellgenic br"],
+        "CENTRAL FARMA IPATINGA": [
+            "central farma ipatinga",
+            "central farmaipatinga",
+        ],
+        "CLIVIVA CENTRO MEDICO": ["cliviva centro medico"],
+        "COMERCIAL RAMOS MATERIAIS": [
+            "comercial ramos materiais",
+            "comercial ramos materiais cirurgicos",
+            "comercial ramos",
+        ],
+        "DERMEGE": ["dermege"],
+        "DROGARIA SÃO PAULO": ["drogaria sao paulo"],
+        "DROGASIL": ["drogasil"],
+        "DUX COMPANY": ["dux company"],
+        "FASTSHOP": ["fastshop", "fast shop"],
+        "FLEXSIV": ["flexsiv"],
+        "FELIPE FERNANDES": ["felipe fernandes"],
+        "GPZ COMERCIAL LTDA": ["gpz comercial", "gpz comercial ltda"],
+        "GENESYSMED": ["genesym", "genesysmed"],
+        "HEALTH TECH FARMACIA": [
+            "health tech farmacia",
+            "health tech farmacia de manipu",
+            "health tech",
+        ],
+        "INFINITY SUPLEMENTOS": ["infinity suplementos"],
+        "ELMECO": [
+            "elmeco",
+            "elmeco produ",
+            "elmeco produtos medicos e farmaceuticos",
+        ],
+        "ECWC TECNOLOGIA": ["ecwc tecnologia"],
+        "ESSENTIAL": ["essential"],
+        "TRIQUE COMERCIO": ["trique comercio"],
+        "SUPERMED": ["supermed", "supremed"],
+        "STIN PHARMA EXCELENCIA": ["stin pharma excelencia"],
+        "QUANTITY SERVIÇOS E COMERCIO": [
+            "quantity servicos e comercio",
+            "quantity",
+        ],
+        "INTERNATIONAL SKIN SOLUTION": ["international skin solution"],
+        "INSTITUTO DE IMUNOLOGIA": ["instituto de imunologia"],
+        "INP INDUSTRIAS DE ALIMENTOS": ["inp industrias de alimentos"],
+        "MAGAZINE MEDICA": ["magazine medica"],
+        "MEDPHARMA MEDICAMENTOS": ["medpharma medicamentos"],
+        "MEICOS": ["meicos"],
+        "MERCADO LIVRE": ["mercado livre", "mercado pago"],
+        "NITRATUS PHARMA": ["nitratus pharma"],
+        "NECK PROFISSIONAIS": ["neck profissionais", "neck"],
+        "LA VIE LEGACY LABS PRODUTOS": ["la vie legacy labs produtos"],
+        "ONCO PROD DISTRIBUIDO": [
+            "onco prod distribuido",
+            "onco prod distribuidora",
+            "onco prod",
+        ],
+        "TOSKANI MEDSAN": ["toskani medsan", "toskani"],
+        "PHARMACIA ESSENTIA": ["pharmacia essentia"],
+    }
     texto = (
         base.get("categoria", pd.Series("", index=base.index)).fillna("").map(normalizar_texto)
         + " "
@@ -715,29 +774,33 @@ def filtrar_fornecedores_producao(df: Optional[pd.DataFrame]) -> pd.DataFrame:
         + " "
         + base.get("tipo", pd.Series("", index=base.index)).fillna("").map(normalizar_texto)
     )
-    fornecedor_listado = texto.str.contains(
-        "|".join(re.escape(nome) for nome in fornecedores_incluir),
-        regex=True,
-    )
-    padrao_producao = (
-        r"materia(?:l|is)\s+(?:e\s+)?medicamento|materiais\s+e\s+medicamentos|"
-        r"\bmedicamento[s]?\b|\bremedio[s]?\b|\bremedio\b|\bmedicacao\b|"
-        r"insumo[s]?\s+clinic[ao]s?|insumo[s]?|"
-        r"\bexame[s]?\b|laboratorio|laboratorial|"
-        r"material\s+medic[ao]|material\s+odontologic[ao]|"
-        r"odontologic[ao]|medic[ao]\s+hospitalar|"
-        r"descartaveis|descartavel|seringa|agulha|luva|mascara|"
-        r"anestesic[ao]|resina|implante|protese|"
-        r"equipamento\s+clinic[ao]|produto[s]?\s+clinic[ao]s?"
-    )
+    fornecedor_canonico = pd.Series("", index=base.index, dtype="object")
+    for nome_padrao, aliases in fornecedores_catalogo.items():
+        padrao_alias = "|".join(
+            re.escape(normalizar_texto(alias))
+            for alias in aliases
+        )
+        if not padrao_alias:
+            continue
+        mascara_alias = texto.str.contains(padrao_alias, regex=True)
+        fornecedor_canonico = fornecedor_canonico.mask(
+            (fornecedor_canonico == "") & mascara_alias,
+            nome_padrao,
+        )
+    fornecedor_listado = fornecedor_canonico != ""
     fora_producao = texto.str.contains(
         r"simples\s+nacional|imposto|tributo|salario|salarios|ordenado|"
         r"repasse\s+medico|pro[\s-]*labore|retirada|ajuste\s+de\s+caixa|"
         r"\bitau\b|sicoob|sicredi|banco|tarifa|aluguel|internet|energia|"
-        r"telefone|honorario|contabil|software|marketing",
+        r"telefone|honorario|contabil|software|marketing|"
+        r"despesa\s+administrativa|matheus\s+\|\s+mercado\s+pago",
         regex=True,
     )
-    return base[(fornecedor_listado | texto.str.contains(padrao_producao, regex=True)) & ~fora_producao].copy()
+    base["fornecedor"] = fornecedor_canonico.where(
+        fornecedor_canonico != "",
+        base.get("fornecedor", pd.Series("", index=base.index)),
+    )
+    return base[fornecedor_listado & ~fora_producao].copy()
 
 
 def filtrar_por_periodo(
@@ -1406,7 +1469,11 @@ def ler_tabela_flexivel(uploaded_file) -> pd.DataFrame:
     )
 
 
-def converter_xls_com_excel(uploaded_file) -> pd.DataFrame:
+def converter_xls_com_excel(
+    uploaded_file,
+    header=0,
+    sheet_name=0,
+) -> pd.DataFrame:
     """Converte .xls pelo Excel instalado quando xlrd não está disponível."""
     if os.name != "nt":
         raise RuntimeError(
@@ -1465,7 +1532,7 @@ try {
                 "Feche e reabra o Streamlit pela sua sessão do Windows ou "
                 "salve o arquivo como .xlsx no Excel."
             )
-        return pd.read_excel(destino)
+        return pd.read_excel(destino, header=header, sheet_name=sheet_name)
 
 
 def ler_todas_tabelas_flexiveis(uploaded_file, header=0) -> List[pd.DataFrame]:
@@ -1490,7 +1557,15 @@ def ler_todas_tabelas_flexiveis(uploaded_file, header=0) -> List[pd.DataFrame]:
         except ImportError as e:
             if extensao == ".xls" and "xlrd" in str(e).lower():
                 uploaded_file.seek(0)
-                return [converter_xls_com_excel(uploaded_file)]
+                convertido = converter_xls_com_excel(
+                    uploaded_file,
+                    header=header,
+                    sheet_name=None,
+                )
+                return [
+                    quadro for quadro in convertido.values()
+                    if quadro is not None and not quadro.empty
+                ]
             raise
 
     return [ler_tabela_flexivel(uploaded_file)]
@@ -2800,6 +2875,88 @@ def processar_clinipay(uploaded_file) -> pd.DataFrame:
         df.columns = [normalizar_texto(col) for col in df.columns]
         df = df.loc[:, ~df.columns.duplicated()].copy()
 
+        def localizar(*termos):
+            for termo in termos:
+                termo_norm = normalizar_texto(termo)
+                for coluna in df.columns:
+                    if termo_norm == coluna or termo_norm in coluna:
+                        return coluna
+            return None
+
+        col_forma = localizar("forma")
+        col_valor_bruto = localizar("valor")
+        col_valor_liquido = localizar("vl final", "valor final", "valor liquido", "valor líquido")
+        col_taxas = localizar("taxas", "taxa")
+        if col_forma and col_valor_bruto and col_valor_liquido and col_taxas:
+            col_data = localizar("recebimento", "pagamento", "data")
+            col_paciente = localizar("paciente", "cliente")
+            col_status = localizar("status")
+            col_transacao = localizar("transa", "transacao", "transação")
+            col_parcela = localizar("parcela")
+            col_juros = localizar("multa/juros", "juros", "multa")
+
+            if col_status:
+                status_norm = df[col_status].fillna("").map(normalizar_texto)
+                df = df[status_norm.str.contains("liquidado", regex=False)].copy()
+            if df.empty:
+                return pd.DataFrame()
+
+            df["data"] = (
+                pd.to_datetime(df[col_data], dayfirst=True, errors="coerce")
+                if col_data else pd.NaT
+            )
+            df["valor_bruto_clinipay"] = df[col_valor_bruto].apply(parse_valor_br)
+            df["valor"] = df[col_valor_liquido].apply(parse_valor_br)
+            df["taxa_clinipay"] = df[col_taxas].apply(parse_valor_br).fillna(0).abs()
+            df["juros_clinipay"] = (
+                df[col_juros].apply(parse_valor_br).fillna(0).abs()
+                if col_juros else 0.0
+            )
+            df = df.dropna(subset=["data", "valor_bruto_clinipay", "valor"])
+            df = df[df["valor_bruto_clinipay"] > 0]
+            forma = df[col_forma].fillna("Clinipay").astype(str).str.strip()
+            paciente = (
+                df[col_paciente].fillna("").astype(str).str.strip()
+                if col_paciente else pd.Series("", index=df.index)
+            )
+            transacao = (
+                df[col_transacao].fillna("").astype(str).str.strip()
+                if col_transacao else pd.Series("", index=df.index)
+            )
+            df["memo"] = (forma + " - " + paciente).str.strip(" -")
+            df.loc[df["memo"] == "", "memo"] = "Recebimento Clinipay"
+            df["forma_clinipay"] = forma
+            df["status_clinipay"] = (
+                df[col_status].fillna("").astype(str).str.strip()
+                if col_status else ""
+            )
+            df["parcela_clinipay"] = (
+                df[col_parcela].fillna("").astype(str).str.strip()
+                if col_parcela else ""
+            )
+            df["transacao_clinipay"] = transacao
+            df["tipo_ofx"] = "CLINIPAY"
+            df["fonte"] = "Clinipay"
+            df["_tipo_relatorio_clinipay"] = "recebiveis"
+            df["percentual_taxa_clinipay"] = (
+                df["taxa_clinipay"] / df["valor_bruto_clinipay"] * 100
+            ).where(df["valor_bruto_clinipay"] > 0, 0)
+            base_juros = df["valor_bruto_clinipay"] - df["juros_clinipay"]
+            df["percentual_juros_clinipay"] = (
+                df["juros_clinipay"] / base_juros * 100
+            ).where(base_juros > 0, 0)
+            logger.info("Clinipay detailed entries processed: %s", len(df))
+            return df[
+                [
+                    "data", "valor", "memo", "tipo_ofx", "fonte",
+                    "valor_bruto_clinipay", "taxa_clinipay",
+                    "juros_clinipay", "percentual_taxa_clinipay",
+                    "percentual_juros_clinipay", "forma_clinipay",
+                    "status_clinipay", "parcela_clinipay",
+                    "transacao_clinipay", "_tipo_relatorio_clinipay",
+                ]
+            ]
+
         obrigatorias = ["data", "tipo", "descricao", "valor"]
         faltantes = [col for col in obrigatorias if col not in df.columns]
         if faltantes:
@@ -2810,16 +2967,56 @@ def processar_clinipay(uploaded_file) -> pd.DataFrame:
             return pd.DataFrame()
 
         tipos = df["tipo"].fillna("").map(normalizar_texto)
-        df = df[tipos.str.contains("entrada", regex=False)].copy()
+        col_status_simples = localizar("status", "situacao", "situação", "estado")
+        if col_status_simples:
+            status_norm = df[col_status_simples].fillna("").map(normalizar_texto)
+            status_valido = status_norm.str.contains(
+                r"liquidado|recebido|pago|confirmado",
+                regex=True,
+            )
+            status_invalidado = status_norm.str.contains(
+                r"a\s+receber|vencid|pendente|aberto|cancelad|estorn",
+                regex=True,
+            )
+            df = df[status_valido & ~status_invalidado].copy()
         df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
         df["valor"] = df["valor"].apply(parse_valor_br)
         df = df.dropna(subset=["data", "valor"])
-        df = df[df["valor"] > 0]
+        tipos = df["tipo"].fillna("").map(normalizar_texto)
+        saida_extrato = (
+            df["valor"].lt(0)
+            | tipos.str.contains(
+                r"saida|saque|debito|tarifa|taxa|custo|estorno",
+                regex=True,
+            )
+        )
+        df = df[saida_extrato].copy()
+        if df.empty:
+            return pd.DataFrame()
         df["memo"] = df["descricao"].fillna("Recebimento Clinipay").astype(str)
         df["tipo_ofx"] = "CLINIPAY"
         df["fonte"] = "Clinipay"
-        logger.info("Clinipay entries processed: %s", len(df))
-        return df[["data", "valor", "memo", "tipo_ofx", "fonte"]]
+        df["valor_bruto_clinipay"] = 0.0
+        df["taxa_clinipay"] = 0.0
+        df["juros_clinipay"] = 0.0
+        df["percentual_taxa_clinipay"] = 0.0
+        df["percentual_juros_clinipay"] = 0.0
+        df["forma_clinipay"] = "Extrato Clinipay"
+        df["status_clinipay"] = ""
+        df["parcela_clinipay"] = ""
+        df["transacao_clinipay"] = ""
+        df["_tipo_relatorio_clinipay"] = "extrato"
+        logger.info("Clinipay statement outflows processed: %s", len(df))
+        return df[
+            [
+                "data", "valor", "memo", "tipo_ofx", "fonte",
+                "valor_bruto_clinipay", "taxa_clinipay",
+                "juros_clinipay", "percentual_taxa_clinipay",
+                "percentual_juros_clinipay", "forma_clinipay",
+                "status_clinipay", "parcela_clinipay",
+                "transacao_clinipay", "_tipo_relatorio_clinipay",
+            ]
+        ]
     except Exception as e:
         logger.error("Error processing Clinipay: %s", e)
         st.error(f"❌ Erro ao processar Clinipay: {str(e)}")
@@ -2945,7 +3142,7 @@ def processar_ofx(
             df["_conta_ofx"] = (
                 conta_match.group(1).strip() if conta_match else "Conta OFX"
             )
-            df["_banco_ofx"] = (
+            df["_banco_ofx"] = nome_banco_brasileiro(
                 banco_match.group(1).strip() if banco_match else "Banco"
             )
             df["_tipo_conta"] = "Conta bancária"
@@ -2959,14 +3156,27 @@ def processar_ofx(
 
 def processar_excel_bancos(uploaded_file) -> pd.DataFrame:
     try:
-        tabela = ler_tabela_flexivel(uploaded_file)
-        linhas = pd.concat(
-            [
-                pd.DataFrame([list(tabela.columns)]),
-                tabela.reset_index(drop=True),
-            ],
-            ignore_index=True,
-        )
+        def ler_linhas_cruas() -> pd.DataFrame:
+            extensao = Path(uploaded_file.name).suffix.lower()
+            uploaded_file.seek(0)
+            if extensao == ".csv":
+                try:
+                    return pd.read_csv(uploaded_file, header=None, sep=None, engine="python", encoding="utf-8-sig")
+                except UnicodeDecodeError:
+                    uploaded_file.seek(0)
+                    return pd.read_csv(uploaded_file, header=None, sep=None, engine="python", encoding="latin-1")
+            if extensao in {".xlsx", ".xls", ".ods"}:
+                try:
+                    return pd.read_excel(uploaded_file, header=None)
+                except ImportError as e:
+                    if extensao == ".xls" and "xlrd" in str(e).lower():
+                        return converter_xls_com_excel(uploaded_file, header=None)
+                    raise
+            return ler_tabela_flexivel(uploaded_file)
+
+        linhas = ler_linhas_cruas()
+        if linhas.empty:
+            return pd.DataFrame()
         linhas.columns = range(len(linhas.columns))
 
         def texto_linha(idx: int) -> str:
@@ -3023,6 +3233,13 @@ def processar_excel_bancos(uploaded_file) -> pd.DataFrame:
                         errors="coerce",
                     ).strftime("%Y%m%d")
                 break
+        if not data_saldo:
+            match_nome = re.search(
+                r"(\d{2})[-_/](\d{2})[-_/](\d{4})",
+                uploaded_file.name,
+            )
+            if match_nome:
+                data_saldo = f"{match_nome.group(3)}{match_nome.group(2)}{match_nome.group(1)}"
 
         linha_cabecalho = None
         for idx in linhas.index:
@@ -3032,7 +3249,99 @@ def processar_excel_bancos(uploaded_file) -> pd.DataFrame:
                 break
 
         quadros = []
+        def chave_coluna_banco(valor) -> str:
+            return re.sub(r"[^a-z0-9]", "", normalizar_texto(valor))
+
+        for idx in linhas.index:
+            chaves = [chave_coluna_banco(valor) for valor in linhas.loc[idx].tolist()]
+            if not any(chave in {"saldoliquido", "saldobruto"} for chave in chaves):
+                continue
+
+            def indice_chave(*nomes):
+                nomes_chave = {chave_coluna_banco(nome) for nome in nomes}
+                for pos, chave in enumerate(chaves):
+                    if chave in nomes_chave:
+                        return pos
+                return None
+
+            col_saldo_posicao = indice_chave("SaldoLiquido", "Saldo Liquido")
+            if col_saldo_posicao is None:
+                col_saldo_posicao = indice_chave("SaldoBruto", "Saldo Bruto")
+            col_conta_posicao = indice_chave("agContaDac", "Conta", "Agência Conta")
+            col_tipo_posicao = indice_chave("Tipo")
+            col_ativo_posicao = indice_chave("Ativo")
+
+            registros_posicao = []
+            for idx_pos in range(idx + 1, len(linhas)):
+                linha = linhas.loc[idx_pos]
+                saldo_posicao = (
+                    parse_valor_br(linha.iloc[col_saldo_posicao])
+                    if col_saldo_posicao is not None else None
+                )
+                if saldo_posicao is None or pd.isna(saldo_posicao):
+                    continue
+                conta_posicao = (
+                    str(linha.iloc[col_conta_posicao]).strip()
+                    if col_conta_posicao is not None and pd.notna(linha.iloc[col_conta_posicao])
+                    else conta
+                )
+                tipo_posicao = (
+                    str(linha.iloc[col_tipo_posicao]).strip()
+                    if col_tipo_posicao is not None and pd.notna(linha.iloc[col_tipo_posicao])
+                    else "Investimentos"
+                )
+                ativo_posicao = (
+                    str(linha.iloc[col_ativo_posicao]).strip()
+                    if col_ativo_posicao is not None and pd.notna(linha.iloc[col_ativo_posicao])
+                    else ""
+                )
+                nome_investimento = " - ".join(
+                    parte
+                    for parte in [tipo_posicao, ativo_posicao, conta_posicao]
+                    if parte
+                )
+                registros_posicao.append({
+                    "data": pd.to_datetime(data_saldo, format="%Y%m%d", errors="coerce"),
+                    "valor": 0.0,
+                    "memo": "Posição consolidada de investimentos",
+                    "tipo_ofx": "SALDO_INVESTIMENTO",
+                    "fonte": "Bancos",
+                    "_saldo_ofx": float(saldo_posicao),
+                    "_data_saldo_ofx": data_saldo,
+                    "_conta_ofx": nome_investimento or "Investimentos",
+                    "_banco_ofx": banco,
+                    "_tipo_conta": "Investimento",
+                })
+            if registros_posicao:
+                quadros.append(pd.DataFrame(registros_posicao))
+            break
+
+        if saldo_banco is not None and pd.notna(saldo_banco):
+            quadros.append(pd.DataFrame([{
+                "data": pd.to_datetime(data_saldo, format="%Y%m%d", errors="coerce"),
+                "valor": 0.0,
+                "memo": "Saldo atual disponível em conta",
+                "tipo_ofx": "SALDO_BANCO",
+                "fonte": "Bancos",
+                "_saldo_ofx": float(saldo_banco),
+                "_data_saldo_ofx": data_saldo,
+                "_conta_ofx": conta,
+                "_banco_ofx": banco,
+                "_tipo_conta": "Conta bancária",
+            }]))
+
+        cabecalho_lancamentos_futuros = False
         if linha_cabecalho is not None:
+            inicio_contexto = max(0, linha_cabecalho - 3)
+            contexto = " ".join(
+                texto_linha(idx)
+                for idx in range(inicio_contexto, linha_cabecalho + 1)
+            )
+            cabecalho_lancamentos_futuros = bool(
+                re.search(r"lancamentos\s+futuros|proximos\s+\d+\s+dias", contexto)
+            )
+
+        if linha_cabecalho is not None and not cabecalho_lancamentos_futuros:
             cabecalhos = [
                 normalizar_texto(valor)
                 for valor in linhas.loc[linha_cabecalho].tolist()
@@ -3532,8 +3841,16 @@ def ler_tabelas_maquininha(uploaded_file) -> List[pd.DataFrame]:
         planilhas = pd.read_excel(uploaded_file, sheet_name=None, header=None)
     except ImportError as e:
         if extensao == ".xls" and "xlrd" in str(e).lower():
-            return [converter_xls_com_excel(uploaded_file)]
-        raise
+            uploaded_file.seek(0)
+            planilhas = converter_xls_com_excel(
+                uploaded_file,
+                header=None,
+                sheet_name=None,
+            )
+            if not isinstance(planilhas, dict):
+                planilhas = {"Planilha": planilhas}
+        else:
+            raise
 
     candidatas = []
     for nome_aba, bruto in planilhas.items():
@@ -3646,6 +3963,7 @@ def detectar_operadora_maquininha(nome_arquivo: str, df: Optional[pd.DataFrame] 
 
     operadoras = [
         ("Rede Service", r"(^|[^a-z0-9])rede([^a-z0-9]|$)|redecard|rede\s*service"),
+        ("Clinipay", r"clinipay|recebimentos\s+operacoes|recebimentos\s+operações"),
         ("Infinity Pay", r"infinity\s*pay|infinite\s*pay|infinitypay|infinitepay"),
         ("Stone", r"\bstone\b"),
         ("Saúde Service", r"saude\s*service|saúde\s*service"),
@@ -3696,10 +4014,12 @@ def processar_infinity_pay(uploaded_file) -> pd.DataFrame:
 
         colunas_data = [
             "data do recebimento", "data de recebimento", "data recebimento",
+            "data recebida", "data prevista do recebimento",
             "data do pagamento", "data de pagamento", "data pagamento",
             "data prevista de pagamento", "data do crédito", "data credito",
             "data do credito", "data da venda", "data original da venda",
-            "data venda", "data", "date",
+            "data venda", "data da transação", "data da transacao",
+            "data", "date",
         ]
         colunas_valor = [
             "valor depositado", "valor líquido da parcela",
@@ -3710,6 +4030,9 @@ def processar_infinity_pay(uploaded_file) -> pd.DataFrame:
             "valor",
         ]
         colunas_valor_bruto = [
+            "valor bruto de recebimento",
+            "valor a receber por beneficiario",
+            "valor a receber por beneficiário",
             "valor da venda atualizado",
             "valor da venda original",
             "valor bruto da parcela atualizada",
@@ -3737,11 +4060,14 @@ def processar_infinity_pay(uploaded_file) -> pd.DataFrame:
         ]
         colunas_hora = ["hora", "time"]
         colunas_tipo = [
-            "tipo de transação", "tipo de transacao", "modalidade", "tipo",
-            "produto", "forma de pagamento", "meio de pagamento",
+            "tipo de transação", "tipo de transacao",
+            "categoria da transação", "categoria da transacao",
+            "modalidade", "produto", "forma de pagamento", "meio de pagamento",
+            "tecnologia", "tipo",
+            "tipo do plano",
         ]
         colunas_bandeira = [
-            "bandeira", "brand", "arranjo", "produto bandeira",
+            "bandeira", "cartão", "cartao", "brand", "arranjo", "produto bandeira",
         ]
         colunas_parcelas = [
             "número de parcelas", "numero de parcelas", "parcelas",
@@ -3754,7 +4080,7 @@ def processar_infinity_pay(uploaded_file) -> pd.DataFrame:
         ]
         colunas_operadora = [
             "operadora", "adquirente", "credenciadora",
-            "instituição", "instituicao", "banco", "canal",
+            "instituição", "instituicao", "canal",
         ]
         colunas_ponto_venda = [
             "tipo de maquininha", "maquininha", "ponto de venda",
@@ -3762,12 +4088,15 @@ def processar_infinity_pay(uploaded_file) -> pd.DataFrame:
         ]
         colunas_nome = [
             "nome", "name", "nome do estabelecimento", "cliente",
-            "estabelecimento", "descrição", "descricao",
+            "estabelecimento", "beneficiário", "beneficiario",
+            "nome do paciente", "paciente", "descrição", "descricao",
         ]
         colunas_detalhe = [
             "detalhe", "detail", "nsu/cv", "nsu", "tid",
             "número da autorização", "numero da autorizacao", "parcela",
             "número de parcelas", "numero de parcelas",
+            "número da operação", "numero da operacao",
+            "código de autorização", "codigo de autorizacao",
         ]
 
         tabela_valida = None
@@ -5329,6 +5658,45 @@ def calcular_taxas_maquininha(df: Optional[pd.DataFrame]) -> Dict[str, float]:
     }
 
 
+def calcular_taxas_clinipay(df: Optional[pd.DataFrame]) -> Dict[str, float]:
+    if df is None or df.empty:
+        return {
+            "bruto": 0.0,
+            "taxas": 0.0,
+            "juros": 0.0,
+            "liquido": 0.0,
+            "taxa_media": 0.0,
+            "juros_medio": 0.0,
+        }
+    base = df.copy()
+    bruto = pd.to_numeric(
+        base.get("valor_bruto_clinipay", base.get("valor", 0)),
+        errors="coerce",
+    ).fillna(0).abs()
+    liquido = pd.to_numeric(base.get("valor", 0), errors="coerce").fillna(0).abs()
+    taxas = pd.to_numeric(
+        base.get("taxa_clinipay", pd.Series(0, index=base.index)),
+        errors="coerce",
+    ).fillna(0).abs()
+    juros = pd.to_numeric(
+        base.get("juros_clinipay", pd.Series(0, index=base.index)),
+        errors="coerce",
+    ).fillna(0).abs()
+    total_bruto = float(bruto.sum())
+    total_taxas = float(taxas.sum())
+    total_juros = float(juros.sum())
+    total_liquido = float(liquido.sum())
+    base_juros = float((bruto - juros).clip(lower=0).sum())
+    return {
+        "bruto": total_bruto,
+        "taxas": total_taxas,
+        "juros": total_juros,
+        "liquido": total_liquido,
+        "taxa_media": (total_taxas / total_bruto * 100) if total_bruto > 0 else 0.0,
+        "juros_medio": (total_juros / base_juros * 100) if base_juros > 0 else 0.0,
+    }
+
+
 def identificar_creditos_banco_da_infinity(
     df_saidas_infinity: Optional[pd.DataFrame],
     df_banco: Optional[pd.DataFrame],
@@ -5465,7 +5833,24 @@ df_banco_base_periodo = df_banco_periodo
 df_infinity_base_periodo = normalizar_bruto_taxa_maquininha(
     df_infinity_periodo
 )
-df_clinipay_base_periodo = df_clinipay_periodo
+if df_clinipay_periodo is not None and not df_clinipay_periodo.empty:
+    tipo_relatorio_clinipay = (
+        df_clinipay_periodo.get(
+            "_tipo_relatorio_clinipay",
+            pd.Series("recebiveis", index=df_clinipay_periodo.index),
+        )
+        .fillna("recebiveis")
+        .map(normalizar_texto)
+    )
+    df_clinipay_base_periodo = df_clinipay_periodo[
+        tipo_relatorio_clinipay.eq("recebiveis")
+    ].copy()
+    df_clinipay_extrato_periodo = df_clinipay_periodo[
+        tipo_relatorio_clinipay.eq("extrato")
+    ].copy()
+else:
+    df_clinipay_base_periodo = pd.DataFrame()
+    df_clinipay_extrato_periodo = pd.DataFrame()
 df_fluxo_base_periodo = df_fluxo_periodo
 df_exc_base_periodo = df_exc_periodo
 df_despesas_recebimentos_conta_azul = despesas_recebimentos_conta_azul(
@@ -7355,13 +7740,25 @@ elif st.session_state.pagina == "detalhes":
             )
 
     with tab_infinity:
-        if df_infinity_base_periodo is None or df_infinity_base_periodo.empty:
+        if (
+            (df_infinity_base_periodo is None or df_infinity_base_periodo.empty)
+            and (df_clinipay_base_periodo is None or df_clinipay_base_periodo.empty)
+        ):
             st.info(
-                "📥 Importe o extrato da maquininha em PDF/Excel ou OFX para "
-                "validar entradas e saídas."
+                "📥 Importe o extrato da maquininha ou o relatório Clinipay "
+                "para validar entradas, taxas e boletos."
             )
         else:
-            df_maquininhas_view = df_infinity_base_periodo.copy()
+            if df_infinity_base_periodo is None or df_infinity_base_periodo.empty:
+                df_maquininhas_view = pd.DataFrame(
+                    columns=[
+                        "data", "valor", "memo", "hora", "maquininha_operadora",
+                        "ponto_venda", "fluxo_infinity", "bandeira",
+                        "tipo_transacao", "parcelas", "taxa_maquininha",
+                    ]
+                )
+            else:
+                df_maquininhas_view = df_infinity_base_periodo.copy()
             col_op, col_band, col_tipo_maq, col_parc = st.columns(4)
             with col_op:
                 opcoes_operadora = ["Todas"] + sorted(
@@ -7624,6 +8021,131 @@ elif st.session_state.pagina == "detalhes":
                 unsafe_allow_html=True,
             )
 
+            if df_clinipay_base_periodo is not None and not df_clinipay_base_periodo.empty:
+                df_clinipay_view = df_clinipay_base_periodo.copy()
+                resumo_clinipay = calcular_taxas_clinipay(df_clinipay_view)
+                st.markdown(
+                    """
+                    <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.07em;
+                                color:#4A4A7A;text-transform:uppercase;margin:1.4rem 0 0.8rem">
+                        Boletos e Clinipay
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                bc1, bc2, bc3, bc4, bc5 = st.columns(5)
+                with bc1:
+                    st.markdown(
+                        f"""
+                        <div class="kpi-card green" style="margin-bottom:1rem">
+                            <div class="kpi-label">Bruto boletos/Clinipay</div>
+                            <div class="kpi-value green">{fmt_brl(resumo_clinipay["bruto"])}</div>
+                            <div class="kpi-footer">Valor original liquidado</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with bc2:
+                    st.markdown(
+                        f"""
+                        <div class="kpi-card red" style="margin-bottom:1rem">
+                            <div class="kpi-label">Custo de liquidação</div>
+                            <div class="kpi-value red">{fmt_brl_saida(resumo_clinipay["taxas"])}</div>
+                            <div class="kpi-footer">Taxa média {resumo_clinipay["taxa_media"]:.2f}%</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with bc3:
+                    st.markdown(
+                        f"""
+                        <div class="kpi-card neutral" style="margin-bottom:1rem">
+                            <div class="kpi-label">Juros / multa</div>
+                            <div class="kpi-value blue">{fmt_brl(resumo_clinipay["juros"])}</div>
+                            <div class="kpi-footer">Juros médio calculado {resumo_clinipay["juros_medio"]:.2f}%</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with bc4:
+                    st.markdown(
+                        f"""
+                        <div class="kpi-card blue" style="margin-bottom:1rem">
+                            <div class="kpi-label">Líquido recebido</div>
+                            <div class="kpi-value blue">{fmt_brl(resumo_clinipay["liquido"])}</div>
+                            <div class="kpi-footer">Bruto menos taxas do Clinipay</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with bc5:
+                    st.markdown(
+                        f"""
+                        <div class="kpi-card purple" style="margin-bottom:1rem">
+                            <div class="kpi-label">Lançamentos</div>
+                            <div class="kpi-value">{len(df_clinipay_view)}</div>
+                            <div class="kpi-footer">Boletos, boletopix e Clinipay</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                rows_clinipay = ""
+                for _, row in df_clinipay_view.sort_values(
+                    "data", ascending=False, na_position="last"
+                ).iterrows():
+                    data_str = (
+                        row["data"].strftime("%d/%m/%y")
+                        if pd.notna(row["data"]) else "—"
+                    )
+                    bruto_linha = pd.to_numeric(
+                        pd.Series([
+                            row.get("valor_bruto_clinipay", row.get("valor", 0))
+                        ]),
+                        errors="coerce",
+                    ).fillna(0).abs().iloc[0]
+                    taxa_linha = pd.to_numeric(
+                        pd.Series([row.get("taxa_clinipay", 0)]),
+                        errors="coerce",
+                    ).fillna(0).abs().iloc[0]
+                    juros_linha = pd.to_numeric(
+                        pd.Series([row.get("juros_clinipay", 0)]),
+                        errors="coerce",
+                    ).fillna(0).abs().iloc[0]
+                    liquido_linha = pd.to_numeric(
+                        pd.Series([row.get("valor", 0)]),
+                        errors="coerce",
+                    ).fillna(0).abs().iloc[0]
+                    perc_taxa = (
+                        taxa_linha / bruto_linha * 100
+                        if bruto_linha > 0 and taxa_linha > 0 else 0.0
+                    )
+                    base_juros = bruto_linha - juros_linha
+                    perc_juros = (
+                        juros_linha / base_juros * 100
+                        if base_juros > 0 and juros_linha > 0 else 0.0
+                    )
+                    rows_clinipay += (
+                        f"<tr><td>{data_str}</td>"
+                        f"<td>{texto_html(row.get('forma_clinipay', 'Clinipay'), 24)}</td>"
+                        f"<td>{texto_html(row.get('memo', ''), 72)}</td>"
+                        f"<td>{texto_html(row.get('parcela_clinipay', ''), 10) or '—'}</td>"
+                        f"<td class='valor-pos'>{fmt_brl(bruto_linha)}</td>"
+                        f"<td>{perc_taxa:.2f}%</td>"
+                        f"<td class='valor-neg'>{fmt_brl_saida(taxa_linha) if taxa_linha > 0 else '—'}</td>"
+                        f"<td>{perc_juros:.2f}%</td>"
+                        f"<td class='valor-pos'>{fmt_brl(juros_linha) if juros_linha > 0 else '—'}</td>"
+                        f"<td class='valor-pos'>{fmt_brl(liquido_linha)}</td></tr>"
+                    )
+                st.markdown(
+                    '<table class="fin-table"><thead><tr>'
+                    '<th>Data</th><th>Forma</th><th>Descrição</th><th>Parcela</th>'
+                    '<th>Bruto</th><th>% Taxa</th><th>Taxa</th>'
+                    '<th>% Juros</th><th>Juros</th><th>Líquido</th></tr></thead>'
+                    f'<tbody>{rows_clinipay}</tbody></table>',
+                    unsafe_allow_html=True,
+                )
+
     with tab_antecipacao:
         if df_antecipacao is None or df_antecipacao.empty:
             st.info(
@@ -7808,54 +8330,97 @@ elif st.session_state.pagina == "saldo":
                 na_position="last",
             )
         contas_importadas = []
+
+        def chave_conta_ofx(df: pd.DataFrame) -> pd.Series:
+            banco = (
+                df["_banco_ofx"] if "_banco_ofx" in df.columns
+                else pd.Series("Banco", index=df.index)
+            ).fillna("Banco").astype(str).str.strip()
+            conta = (
+                df["_conta_ofx"] if "_conta_ofx" in df.columns
+                else pd.Series("", index=df.index)
+            ).fillna("").astype(str).str.strip()
+            arquivo = (
+                df["_arquivo_origem"] if "_arquivo_origem" in df.columns
+                else pd.Series("", index=df.index)
+            ).fillna("").astype(str).str.strip()
+            conta_base = conta.where(
+                conta.ne("") & conta.map(normalizar_texto).ne("conta ofx"),
+                arquivo,
+            )
+            conta_base = conta_base.where(conta_base.ne(""), "Conta OFX")
+            return banco + "||" + conta_base
+
         if not linhas_saldo.empty:
-            primeira_linha = linhas_saldo.iloc[0]
-            saldo_oficial = primeira_linha.get("_saldo_ofx")
-            tem_saldo_oficial = pd.notna(saldo_oficial)
-            if tem_saldo_oficial:
-                saldo_final_extrato = float(saldo_oficial)
-                movimentos_desde_inicio = float(
-                    extrato_completo.loc[
-                        extrato_completo["data"] >= inicio_periodo,
+            linhas_saldo["_grupo_conta_ofx"] = chave_conta_ofx(linhas_saldo)
+            extrato_completo["_grupo_conta_ofx"] = chave_conta_ofx(extrato_completo)
+
+            for idx_grupo, (grupo_conta, linhas_conta) in enumerate(
+                linhas_saldo.groupby("_grupo_conta_ofx", sort=False)
+            ):
+                primeira_linha = linhas_conta.iloc[0]
+                extrato_conta = extrato_completo[
+                    extrato_completo["_grupo_conta_ofx"] == grupo_conta
+                ]
+                movimento_periodo_conta = float(
+                    extrato_conta.loc[
+                        extrato_conta["data"].between(
+                            inicio_periodo,
+                            fim_periodo,
+                            inclusive="both",
+                        ),
                         "valor",
                     ].sum()
                 )
-                movimentos_apos_fim = float(
-                    extrato_completo.loc[
-                        extrato_completo["data"] > fim_periodo,
-                        "valor",
-                    ].sum()
-                )
-                saldo_inicial_ofx = saldo_final_extrato - movimentos_desde_inicio
-                saldo_final_ofx = saldo_final_extrato - movimentos_apos_fim
-            else:
-                saldo_inicial_ofx = float(
-                    extrato_completo.loc[
-                        extrato_completo["data"] < inicio_periodo,
-                        "valor",
-                    ].sum()
-                )
-                saldo_final_ofx = saldo_inicial_ofx + movimento_periodo
-            conta_ofx = str(
-                primeira_linha.get("_conta_ofx", "Conta OFX") or "Conta OFX"
-            )
-            banco_ofx = str(
-                primeira_linha.get("_banco_ofx", "Banco") or "Banco"
-            )
-            sufixo_conta = conta_ofx[-4:] if len(conta_ofx) > 4 else conta_ofx
-            nome_conta_ofx = (
-                f"Conta OFX •••• {sufixo_conta}"
-                if conta_ofx != "Conta OFX" else conta_ofx
-            )
-            contas_importadas.append([
-                "ofx",
-                nome_conta_ofx,
-                banco_ofx,
-                saldo_inicial_ofx,
-                saldo_final_ofx,
-                "Conta bancária",
-            ])
-            saldo_ofx_estimado = not tem_saldo_oficial
+                saldo_oficial = primeira_linha.get("_saldo_ofx")
+                tem_saldo_oficial = pd.notna(saldo_oficial)
+                if tem_saldo_oficial:
+                    saldo_final_extrato = float(saldo_oficial)
+                    movimentos_desde_inicio = float(
+                        extrato_conta.loc[
+                            extrato_conta["data"] >= inicio_periodo,
+                            "valor",
+                        ].sum()
+                    )
+                    movimentos_apos_fim = float(
+                        extrato_conta.loc[
+                            extrato_conta["data"] > fim_periodo,
+                            "valor",
+                        ].sum()
+                    )
+                    saldo_inicial_ofx = saldo_final_extrato - movimentos_desde_inicio
+                    saldo_final_ofx = saldo_final_extrato - movimentos_apos_fim
+                else:
+                    saldo_inicial_ofx = float(
+                        extrato_conta.loc[
+                            extrato_conta["data"] < inicio_periodo,
+                            "valor",
+                        ].sum()
+                    )
+                    saldo_final_ofx = saldo_inicial_ofx + movimento_periodo_conta
+                conta_ofx = str(
+                    primeira_linha.get("_conta_ofx", "Conta OFX") or "Conta OFX"
+                ).strip()
+                banco_ofx = nome_banco_brasileiro(str(
+                    primeira_linha.get("_banco_ofx", "Banco") or "Banco"
+                ).strip())
+                arquivo_ofx = str(
+                    primeira_linha.get("_arquivo_origem", "") or ""
+                ).strip()
+                if conta_ofx and normalizar_texto(conta_ofx) != "conta ofx":
+                    sufixo_conta = conta_ofx[-4:] if len(conta_ofx) > 4 else conta_ofx
+                    nome_conta_ofx = f"{banco_ofx} •••• {sufixo_conta}"
+                else:
+                    nome_conta_ofx = banco_ofx if banco_ofx != "Banco" else "Conta OFX"
+                contas_importadas.append([
+                    f"ofx_{idx_grupo}",
+                    nome_conta_ofx,
+                    banco_ofx,
+                    saldo_inicial_ofx,
+                    saldo_final_ofx,
+                    "Conta bancária",
+                ])
+                saldo_ofx_estimado = saldo_ofx_estimado or not tem_saldo_oficial
 
         if not linhas_investimento.empty:
             investimentos_validos = linhas_investimento.dropna(
@@ -7867,9 +8432,9 @@ elif st.session_state.pagina == "saldo":
                     linha_invest.get("_conta_ofx", "Investimentos")
                     or "Investimentos"
                 )
-                banco_invest = str(
+                banco_invest = nome_banco_brasileiro(str(
                     linha_invest.get("_banco_ofx", "Banco") or "Banco"
-                )
+                ))
                 contas_importadas.append([
                     f"invest_excel_{idx}",
                     nome_invest,
@@ -7894,19 +8459,40 @@ elif st.session_state.pagina == "saldo":
             "isso, seus valores permanecem fixos ao alterar o período."
         )
 
-    contas_bancarias = [
+    bancos_disponiveis = sorted(
+        {
+            str(c[2] or "Banco")
+            for c in contas
+            if len(c) > 2 and str(c[2] or "").strip()
+        }
+    )
+    filtro_banco_saldo = "Todos os bancos"
+    if bancos_disponiveis:
+        filtro_banco_saldo = st.selectbox(
+            "Banco",
+            ["Todos os bancos", *bancos_disponiveis],
+            key="filtro_banco_saldo",
+        )
+
+    contas_filtradas = [
         c for c in contas
+        if filtro_banco_saldo == "Todos os bancos"
+        or str(c[2] or "Banco") == filtro_banco_saldo
+    ]
+
+    contas_bancarias = [
+        c for c in contas_filtradas
         if normalizar_texto(tipo_conta_registro(c)) != "investimento"
     ]
     contas_investimento = [
-        c for c in contas
+        c for c in contas_filtradas
         if normalizar_texto(tipo_conta_registro(c)) == "investimento"
     ]
     saldo_banco_final = sum(c[4] for c in contas_bancarias) if contas_bancarias else 0.0
     saldo_invest_final = (
         sum(c[4] for c in contas_investimento) if contas_investimento else 0.0
     )
-    total_inicial = sum(c[3] for c in contas) if contas else 0.0
+    total_inicial = sum(c[3] for c in contas_filtradas) if contas_filtradas else 0.0
     total_final   = saldo_banco_final + saldo_invest_final
     variacao      = total_final - total_inicial
     cor_var       = "green" if variacao >= 0 else "red"
@@ -7924,11 +8510,11 @@ elif st.session_state.pagina == "saldo":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if not contas:
+    if not contas_filtradas:
         st.markdown('<table class="fin-table"><thead><tr><th>Conta</th><th>Instituição</th><th>Tipo</th><th>Saldo Inicial</th><th>Saldo Final</th><th>Variação</th></tr></thead><tbody><tr class="empty-row"><td colspan="6">Nenhuma conta cadastrada.</td></tr></tbody></table>', unsafe_allow_html=True)
     else:
         rows = ""
-        for c in contas:
+        for c in contas_filtradas:
             cid, nome, banco, s_ini, s_fin = c[:5]
             tipo_conta = tipo_conta_registro(c)
             var     = s_fin - s_ini
