@@ -7957,6 +7957,18 @@ elif st.session_state.pagina == "detalhes":
             df_filtrado = pagamentos_periodo_global[
                 "contas_conciliadas"
             ].copy()
+            for coluna_padrao, valor_padrao in {
+                "descricao": "",
+                "categoria": "",
+                "forma": "",
+                "valor": 0.0,
+            }.items():
+                if coluna_padrao not in df_filtrado.columns:
+                    df_filtrado[coluna_padrao] = valor_padrao
+            df_filtrado["valor"] = pd.to_numeric(
+                df_filtrado["valor"],
+                errors="coerce",
+            ).fillna(0.0)
             if "grupo_custo" not in df_filtrado.columns:
                 df_filtrado["grupo_custo"] = classificar_grupo_custo(df_filtrado)
             if busca:
@@ -8625,6 +8637,23 @@ elif st.session_state.pagina == "detalhes":
                                     unsafe_allow_html=True,
                                 )
             vendas_tabela = base_recebimentos_belle.copy()
+            for coluna_padrao, valor_padrao in {
+                "data": pd.NaT,
+                "descricao": "",
+                "valor": 0.0,
+                "status": "Aprovado",
+                "fonte_venda": "Venda",
+            }.items():
+                if coluna_padrao not in vendas_tabela.columns:
+                    vendas_tabela[coluna_padrao] = valor_padrao
+            vendas_tabela["data"] = pd.to_datetime(
+                vendas_tabela["data"],
+                errors="coerce",
+            )
+            vendas_tabela["valor"] = pd.to_numeric(
+                vendas_tabela["valor"],
+                errors="coerce",
+            ).fillna(0.0)
             if (
                 "servico_vendido" in vendas_tabela.columns
                 and normalizar_texto(fonte_vendas_ativa)
