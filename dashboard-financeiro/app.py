@@ -944,6 +944,7 @@ def filtrar_movimentos_validos_recebimento(
     excluir = texto.str.contains(
         r"transferencia\s+entre\s+contas|transf\.?\s+entre\s+contas|"
         r"transf(?:erencia)?\s+(?:mesma\s+)?titularidade|"
+        r"mesma\s+tit\.?|mesma\s+titularidade|"
         r"transf(?:erencia)?\s+(?:entre|p/|para)\s+(?:minhas\s+)?contas?|"
         r"transf(?:erencia)?\s+(?:conta\s+propria|propria|mesma\s+empresa)|"
         r"credito\s+transf(?:erencia)?\s+(?:propria|entre\s+contas)|"
@@ -1013,11 +1014,30 @@ def remover_repasses_maquininha_do_banco(
         return pd.DataFrame() if df is None else df.copy()
 
     movimentos = df.copy()
-    memorandos = movimentos["memo"].fillna("").map(normalizar_texto)
+    memorandos = (
+        movimentos.get("memo", pd.Series("", index=movimentos.index))
+        .fillna("").map(normalizar_texto)
+        + " "
+        + movimentos.get("nome", pd.Series("", index=movimentos.index))
+        .fillna("").map(normalizar_texto)
+        + " "
+        + movimentos.get("detalhe", pd.Series("", index=movimentos.index))
+        .fillna("").map(normalizar_texto)
+        + " "
+        + movimentos.get("fonte", pd.Series("", index=movimentos.index))
+        .fillna("").map(normalizar_texto)
+        + " "
+        + movimentos.get("tipo_ofx", pd.Series("", index=movimentos.index))
+        .fillna("").map(normalizar_texto)
+        + " "
+        + movimentos.get("_arquivo_origem", pd.Series("", index=movimentos.index))
+        .fillna("").map(normalizar_texto)
+    )
     valores = pd.to_numeric(movimentos.get("valor", 0), errors="coerce").fillna(0)
-    repasse_maquininha = (valores > 0) & memorandos.str.contains(
+    repasse_maquininha = memorandos.str.contains(
         r"recebimento\s+rede|redecard|cielo|stone|getnet|pagseguro|"
-        r"mercado\s*pago|maquininha|visa|master|mast|elo",
+        r"mercado\s*pago|maquininha|visa|master|mast|elo|"
+        r"infinite\s*pay|infinitepay|statements?",
         regex=True,
     )
     return movimentos[~repasse_maquininha].copy()
@@ -1160,6 +1180,48 @@ def calcular_antecipacoes(
         "recebido": recebido,
         "custo": custo,
         "liquido": recebido - custo,
+    }
+
+
+def calcular_antecipacoes_maquininha(
+    df_maquininha: Optional[pd.DataFrame],
+) -> Dict[str, float]:
+    resultado = {"recebido": 0.0, "custo": 0.0, "liquido": 0.0}
+    if df_maquininha is None or df_maquininha.empty:
+        return resultado
+
+    base = df_maquininha.copy()
+    antecipada = base.get(
+        "antecipada_maquininha",
+        pd.Series("", index=base.index),
+    ).fillna("").map(normalizar_texto)
+    mascara_antecipada = antecipada.str.contains(
+        r"\bsim\b|antecipad",
+        regex=True,
+    )
+    if not mascara_antecipada.any():
+        return resultado
+
+    antecipadas = base[mascara_antecipada].copy()
+    liquido = pd.to_numeric(
+        antecipadas.get("valor", 0),
+        errors="coerce",
+    ).fillna(0).abs()
+    bruto = pd.to_numeric(
+        antecipadas.get("valor_bruto_maquininha", 0),
+        errors="coerce",
+    ).fillna(0).abs()
+    bruto = bruto.mask((bruto <= 0) & (liquido > 0), liquido)
+    custo = (bruto - liquido).clip(lower=0)
+    custo_taxa = pd.to_numeric(
+        antecipadas.get("taxa_maquininha", 0),
+        errors="coerce",
+    ).fillna(0).abs()
+    custo = custo.mask(custo <= 0, custo_taxa)
+    return {
+        "recebido": float(bruto.sum()),
+        "custo": float(custo.sum()),
+        "liquido": float(liquido.sum()),
     }
 
 
@@ -1377,6 +1439,27 @@ def conciliar_pagamentos(
     contas = df_contas.copy()
     if "grupo_custo" not in contas.columns:
         contas["grupo_custo"] = classificar_grupo_custo(contas)
+    texto_contas = (
+        contas.get("categoria", pd.Series("", index=contas.index))
+        .fillna("").map(normalizar_texto)
+        + " "
+        + contas.get("descricao", pd.Series("", index=contas.index))
+        .fillna("").map(normalizar_texto)
+        + " "
+        + contas.get("forma", pd.Series("", index=contas.index))
+        .fillna("").map(normalizar_texto)
+    )
+    movimentacao_entre_contas = texto_contas.str.contains(
+        r"^\s*1\.1\.\d|1\.1\.1\.\d+.*(?:sicoob|sicredi|itau|itaú|"
+        r"bradesco|santander|banco|infinite\s*pay|infinitepay)|"
+        r"transferencia\s+entre\s+contas|transf\.?\s+entre\s+contas|"
+        r"movimentacao\s+conta|movimentação\s+conta|repasse\s+entre\s+contas",
+        regex=True,
+    ) & ~texto_contas.str.contains(
+        r"tarifa|taxa|juros|financiamento|emprestimo|empréstimo",
+        regex=True,
+    )
+    contas = contas[~movimentacao_entre_contas].copy()
     vazio["contas_conciliadas"] = contas.iloc[0:0].copy()
 
     fonte_norm = contas.get(
@@ -1470,11 +1553,35 @@ def conciliar_pagamentos(
         }
     debitos = df_extrato[df_extrato["valor"] < 0].copy()
     if not debitos.empty and "memo" in debitos.columns:
-        memo_debitos = debitos["memo"].fillna("").map(normalizar_texto)
-        debitos_nao_despesa = memo_debitos.str.contains(
+        texto_debitos = (
+            debitos.get("memo", pd.Series("", index=debitos.index))
+            .fillna("").map(normalizar_texto)
+            + " "
+            + debitos.get("nome", pd.Series("", index=debitos.index))
+            .fillna("").map(normalizar_texto)
+            + " "
+            + debitos.get("detalhe", pd.Series("", index=debitos.index))
+            .fillna("").map(normalizar_texto)
+            + " "
+            + debitos.get("fonte", pd.Series("", index=debitos.index))
+            .fillna("").map(normalizar_texto)
+            + " "
+            + debitos.get("tipo_ofx", pd.Series("", index=debitos.index))
+            .fillna("").map(normalizar_texto)
+            + " "
+            + debitos.get("tipo_transacao", pd.Series("", index=debitos.index))
+            .fillna("").map(normalizar_texto)
+            + " "
+            + debitos.get("_arquivo_origem", pd.Series("", index=debitos.index))
+            .fillna("").map(normalizar_texto)
+        )
+        debitos_nao_despesa = texto_debitos.str.contains(
             r"transferencia\s+entre\s+contas|transf\.?\s+entre\s+contas|"
             r"saldo|aplicacao|aplic\.|resgate|investimento|"
-            r"movimentacao\s+conta",
+            r"movimentacao\s+conta|maquininha|infinite\s*pay|infinitepay|"
+            r"\bmaquininha\b|\bmaq\b|tipo_ofx\s*maquininha|"
+            r"deposito\s+infinitepay|dep[oó]sito\s+infinitepay|"
+            r"statements?.*pix.*enviado|pix.*enviado.*statements?",
             regex=True,
         )
         debitos = debitos[~debitos_nao_despesa].copy()
@@ -1862,6 +1969,11 @@ def processar_contas_receber(uploaded_file) -> pd.DataFrame:
             col_valor_liquido = localizar(
                 "valor liq.", "valor líquido", "valor liquido"
             )
+            col_data_confirmacao = localizar(
+                "data conf.", "data conf", "data confirmação",
+                "data confirmacao", "data de confirmação",
+                "data de confirmacao",
+            )
             col_data = localizar(
                 "vencimento", "vcto.", "vcto", "data de vencimento",
                 "recebimento", "data"
@@ -1910,6 +2022,27 @@ def processar_contas_receber(uploaded_file) -> pd.DataFrame:
             df["observacao"] = (
                 df[col_observacao].fillna("").astype(str).str.strip()
                 if col_observacao else ""
+            )
+            if col_data_confirmacao:
+                datas_iso = pd.to_datetime(
+                    df[col_data_confirmacao],
+                    errors="coerce",
+                )
+                datas_br = pd.to_datetime(
+                    df[col_data_confirmacao],
+                    dayfirst=True,
+                    errors="coerce",
+                )
+                df["data_recebimento_belle"] = datas_iso.fillna(datas_br)
+            else:
+                df["data_recebimento_belle"] = df["data"]
+            df["valor_recebimento_belle"] = df["valor_recebido"]
+            df["transferencia_recebimento_belle"] = (
+                df["observacao"].fillna("").map(normalizar_texto).str.contains(
+                    r"transf|transferencia|transferência|entre\s+contas|"
+                    r"conta\s+propria|conta\s+própria|mesma\s+titularidade",
+                    regex=True,
+                )
             )
             datas_transferencia = df["observacao"].apply(
                 data_transferencia_observacao
@@ -2373,6 +2506,26 @@ def processar_excel(uploaded_file) -> pd.DataFrame:
             df[col_forma].fillna("").astype(str).str.strip()
             if col_forma else ""
         )
+
+        categorias_norm = df["categoria"].map(normalizar_texto)
+        descricoes_norm = df["descricao"].map(normalizar_texto)
+        conta_bancaria_destino = categorias_norm.str.contains(
+            r"^\s*1\.1\.\d|^\s*1\.1\.1|sicoob|sicredi|itau|itaú|"
+            r"bradesco|santander|caixa\s+economica|banco\s+do\s+brasil|"
+            r"infinite\s*pay|infinitepay|maquininha",
+            regex=True,
+        ) & ~categorias_norm.str.contains(
+            r"tarifa|taxa|juros|financiamento|emprestimo|empréstimo",
+            regex=True,
+        )
+        descricao_transferencia = descricoes_norm.str.contains(
+            r"transferencia\s+entre\s+contas|transf\.?\s+entre\s+contas|"
+            r"movimentacao\s+conta|movimentação\s+conta|repasse\s+entre\s+contas",
+            regex=True,
+        )
+        df = df[~(conta_bancaria_destino | descricao_transferencia)].copy()
+        if df.empty:
+            return pd.DataFrame()
 
         categorias_norm = df["categoria"].map(normalizar_texto)
         categorias_fixas = categorias_norm.str.contains(
@@ -3607,9 +3760,17 @@ def processar_excel_bancos(uploaded_file) -> pd.DataFrame:
                 "tipo lançamento",
                 "tipo lan",
             )
+            col_detalhe = indice_coluna("detalhe", "detail")
             col_doc = indice_coluna("documento", "doc")
             col_valor = indice_coluna("valor")
             col_saldo = indice_coluna("saldo")
+            eh_extrato_maquininha_excel = (
+                col_tipo_movimento is not None
+                and col_detalhe is not None
+                and col_nome is not None
+                and any("tipo de transacao" in nome for nome in cabecalhos)
+                and any("hora" in nome for nome in cabecalhos)
+            )
             registros = []
             for idx in range(linha_cabecalho + 1, len(linhas)):
                 linha = linhas.loc[idx]
@@ -3644,6 +3805,19 @@ def processar_excel_bancos(uploaded_file) -> pd.DataFrame:
                     if col_nome is not None and pd.notna(linha.iloc[col_nome])
                     else ""
                 )
+                detalhe_lancamento = (
+                    str(linha.iloc[col_detalhe]).strip()
+                    if col_detalhe is not None and pd.notna(linha.iloc[col_detalhe])
+                    else ""
+                )
+                if descricao == "Movimento bancário" and (
+                    nome_lancamento or detalhe_lancamento
+                ):
+                    descricao = " - ".join(
+                        parte
+                        for parte in [nome_lancamento, detalhe_lancamento]
+                        if parte
+                    )
                 tipo_movimento = (
                     str(linha.iloc[col_tipo_movimento]).strip()
                     if col_tipo_movimento is not None and pd.notna(linha.iloc[col_tipo_movimento])
@@ -3662,9 +3836,16 @@ def processar_excel_bancos(uploaded_file) -> pd.DataFrame:
                     "data": data,
                     "valor": float(valor),
                     "memo": descricao,
-                    "tipo_ofx": documento or "EXCEL",
-                    "fonte": "Bancos",
+                    "tipo_ofx": (
+                        "MAQUININHA" if eh_extrato_maquininha_excel
+                        else documento or "EXCEL"
+                    ),
+                    "fonte": (
+                        "Maquininha" if eh_extrato_maquininha_excel
+                        else "Bancos"
+                    ),
                     "nome": nome_lancamento,
+                    "detalhe": detalhe_lancamento,
                     "tipo_transacao": tipo_movimento,
                     "tipo_lancamento": tipo_lancamento,
                     "_arquivo_origem": getattr(uploaded_file, "name", ""),
@@ -3672,7 +3853,10 @@ def processar_excel_bancos(uploaded_file) -> pd.DataFrame:
                     "_data_saldo_ofx": data_saldo,
                     "_conta_ofx": conta,
                     "_banco_ofx": banco,
-                    "_tipo_conta": "Conta bancária",
+                    "_tipo_conta": (
+                        "Maquininha" if eh_extrato_maquininha_excel
+                        else "Conta bancária"
+                    ),
                 })
             if registros:
                 quadros.append(pd.DataFrame(registros))
@@ -4284,6 +4468,7 @@ def processar_infinity_pay(uploaded_file) -> pd.DataFrame:
             return pd.DataFrame()
 
         colunas_data = [
+            "data do depósito", "data do deposito",
             "data do recebimento", "data de recebimento", "data recebimento",
             "data recebida", "data prevista do recebimento",
             "data do pagamento", "data de pagamento", "data pagamento",
@@ -4293,6 +4478,8 @@ def processar_infinity_pay(uploaded_file) -> pd.DataFrame:
             "data", "date",
         ]
         colunas_valor = [
+            "recebido (r$)", "recebido",
+            "líquido (r$)", "liquido (r$)", "líquido", "liquido",
             "valor depositado", "valor líquido da parcela",
             "valor liquido da parcela", "valor líquido", "valor liquido",
             "valor recebido", "valor do recebimento", "valor creditado",
@@ -4301,6 +4488,7 @@ def processar_infinity_pay(uploaded_file) -> pd.DataFrame:
             "valor",
         ]
         colunas_valor_bruto = [
+            "valor da parcela (r$)", "valor da parcela",
             "valor bruto de recebimento",
             "valor a receber por beneficiario",
             "valor a receber por beneficiário",
@@ -4349,6 +4537,9 @@ def processar_infinity_pay(uploaded_file) -> pd.DataFrame:
             "status da venda", "status", "situação", "situacao",
             "estado", "resultado",
         ]
+        colunas_antecipada = [
+            "antecipada", "antecipado", "antecipacao", "antecipação",
+        ]
         colunas_operadora = [
             "operadora", "adquirente", "credenciadora",
             "instituição", "instituicao", "canal",
@@ -4393,6 +4584,7 @@ def processar_infinity_pay(uploaded_file) -> pd.DataFrame:
         col_bandeira = localizar_coluna_flexivel(df.columns, colunas_bandeira)
         col_parcelas = localizar_coluna_flexivel(df.columns, colunas_parcelas)
         col_status = localizar_coluna_flexivel(df.columns, colunas_status)
+        col_antecipada = localizar_coluna_flexivel(df.columns, colunas_antecipada)
         col_operadora = localizar_coluna_flexivel(df.columns, colunas_operadora)
         col_ponto_venda = localizar_coluna_flexivel(df.columns, colunas_ponto_venda)
         col_nome = localizar_coluna_flexivel(df.columns, colunas_nome)
@@ -4460,6 +4652,10 @@ def processar_infinity_pay(uploaded_file) -> pd.DataFrame:
             df[col_status].fillna("").astype(str).str.strip()
             if col_status else pd.Series("", index=df.index)
         )
+        antecipada = (
+            df[col_antecipada].fillna("").astype(str).str.strip()
+            if col_antecipada else pd.Series("", index=df.index)
+        )
         operadora_coluna = (
             df[col_operadora].fillna("").astype(str).str.strip()
             if col_operadora else pd.Series("", index=df.index)
@@ -4489,6 +4685,8 @@ def processar_infinity_pay(uploaded_file) -> pd.DataFrame:
         df["bandeira"] = bandeira
         df["parcelas"] = parcelas
         df["status_maquininha"] = status_maquininha
+        df["antecipada_maquininha"] = antecipada
+        df["_relatorio_maquininha_detalhado"] = bool(col_antecipada)
         df["ponto_venda"] = ponto_venda
         df["maquininha_operadora"] = operadora_detectada
         operadora_norm = operadora_coluna.map(normalizar_texto)
@@ -4517,6 +4715,7 @@ def processar_infinity_pay(uploaded_file) -> pd.DataFrame:
             "detalhe", "fonte", "tipo_ofx", "conta_destino",
             "fluxo_infinity", "valor_bruto_maquininha", "taxa_maquininha",
             "maquininha_operadora", "bandeira", "parcelas", "status_maquininha",
+            "antecipada_maquininha", "_relatorio_maquininha_detalhado",
             "ponto_venda",
             "_linha_origem_infinity",
         ]]
@@ -4550,8 +4749,46 @@ def processar_multiplos_arquivos(
     if nome_processador in {
         "processar_bancos",
         "processar_excel_bancos",
-        "processar_infinity_pay",
     }:
+        return combinado.reset_index(drop=True)
+    if nome_processador == "processar_infinity_pay":
+        relatorio_detalhado = (
+            combinado.get(
+                "_relatorio_maquininha_detalhado",
+                pd.Series(False, index=combinado.index),
+            )
+            .fillna(False)
+            .astype(bool)
+        )
+        if relatorio_detalhado.any():
+            texto_maquininha = (
+                combinado.get("memo", pd.Series("", index=combinado.index))
+                .fillna("").map(normalizar_texto)
+                + " "
+                + combinado.get("tipo_transacao", pd.Series("", index=combinado.index))
+                .fillna("").map(normalizar_texto)
+                + " "
+                + combinado.get("detalhe", pd.Series("", index=combinado.index))
+                .fillna("").map(normalizar_texto)
+                + " "
+                + combinado.get("_arquivo_origem", pd.Series("", index=combinado.index))
+                .fillna("").map(normalizar_texto)
+            )
+            valores_maquininha = pd.to_numeric(
+                combinado.get("valor", 0),
+                errors="coerce",
+            ).fillna(0)
+            deposito_statement = (
+                ~relatorio_detalhado
+                & (valores_maquininha > 0)
+                & texto_maquininha.str.contains(
+                    r"deposito\s+de\s+vendas|dep[oó]sito\s+de\s+vendas|"
+                    r"deposito\s+infinitepay|dep[oó]sito\s+infinitepay|"
+                    r"statements?",
+                    regex=True,
+                )
+            )
+            combinado = combinado[~deposito_statement].copy()
         return combinado.reset_index(drop=True)
 
     colunas_deduplicacao = [
@@ -5814,6 +6051,80 @@ def somar_recebido_belle(df: Optional[pd.DataFrame]) -> float:
     return float(pd.to_numeric(df[coluna], errors="coerce").fillna(0).sum())
 
 
+def filtrar_recebimento_oficial_belle_periodo(
+    df: Optional[pd.DataFrame],
+    inicio: pd.Timestamp,
+    fim: pd.Timestamp,
+) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+    if "valor_recebimento_belle" not in df.columns:
+        return pd.DataFrame()
+
+    base = df.copy()
+    coluna_data = (
+        "data_recebimento_belle"
+        if "data_recebimento_belle" in base.columns else "data"
+    )
+    datas = pd.to_datetime(base[coluna_data], errors="coerce")
+    valores = pd.to_numeric(
+        base["valor_recebimento_belle"],
+        errors="coerce",
+    ).fillna(0)
+    transferencias = base.get(
+        "transferencia_recebimento_belle",
+        pd.Series(False, index=base.index),
+    ).fillna(False).astype(bool)
+    return base[
+        datas.between(inicio, fim, inclusive="both")
+        & (valores > 0)
+        & ~transferencias
+    ].copy()
+
+
+def somar_recebimento_oficial_belle_periodo(
+    df: Optional[pd.DataFrame],
+    inicio: pd.Timestamp,
+    fim: pd.Timestamp,
+) -> float:
+    base = filtrar_recebimento_oficial_belle_periodo(df, inicio, fim)
+    if base.empty:
+        return 0.0
+    return float(
+        pd.to_numeric(
+            base["valor_recebimento_belle"],
+            errors="coerce",
+        ).fillna(0).sum()
+    )
+
+
+def somar_recebimento_maquininha(df: Optional[pd.DataFrame]) -> float:
+    if df is None or df.empty:
+        return 0.0
+    base = df.copy()
+    valor_liquido = pd.to_numeric(
+        base.get("valor", 0),
+        errors="coerce",
+    ).fillna(0).abs()
+    valor_bruto = pd.to_numeric(
+        base.get("valor_bruto_maquininha", 0),
+        errors="coerce",
+    ).fillna(0).abs()
+    antecipada = base.get(
+        "antecipada_maquininha",
+        pd.Series("", index=base.index),
+    ).fillna("").map(normalizar_texto)
+    mascara_antecipada = antecipada.str.contains(
+        r"\bsim\b|antecipad",
+        regex=True,
+    )
+    valor_receita = valor_liquido.mask(
+        mascara_antecipada & (valor_bruto > 0),
+        valor_bruto,
+    )
+    return float(valor_receita.sum())
+
+
 def despesas_recebimentos_conta_azul(
     df: Optional[pd.DataFrame],
 ) -> pd.DataFrame:
@@ -6139,6 +6450,18 @@ vendas_referencia_periodo = (
     else vendas_contas_receber_periodo
 )
 base_recebimentos_belle = df_orcamentos_periodo
+recebimentos_oficiais_belle_periodo = (
+    somar_recebimento_oficial_belle_periodo(
+        st.session_state.df_belle_receber,
+        inicio_periodo,
+        fim_periodo,
+    )
+    if "belle" in sistema_vendas_ativo else 0.0
+)
+usar_recebimentos_oficiais_belle = (
+    "belle" in sistema_vendas_ativo
+    and recebimentos_oficiais_belle_periodo > 0
+)
 base_recebimentos_ofx_periodo = filtrar_vendas_para_conciliacao_ofx(
     base_recebimentos_belle
 )
@@ -6277,7 +6600,7 @@ recebimentos_infinity_sistema_periodo = (
     somar_recebido_belle(df_recebimentos_infinity_belle_periodo)
 )
 recebimentos_infinity_extrato_periodo = (
-    float(df_entradas_infinity_periodo["valor"].sum())
+    somar_recebimento_maquininha(df_entradas_infinity_periodo)
     if not df_entradas_infinity_periodo.empty else 0.0
 )
 saidas_infinity_periodo = (
@@ -6364,6 +6687,8 @@ recebimentos = (
     if usar_recebimentos_conta_azul
     else recebimentos_conta_corrente_periodo
     if usar_conta_corrente_clinicorp
+    else recebimentos_oficiais_belle_periodo
+    if usar_recebimentos_oficiais_belle
     else (
         recebimentos_belle_periodo + conciliacao_geral["total"]
         if recebimentos_belle_periodo > 0
@@ -6723,6 +7048,8 @@ elif st.session_state.pagina == "visao":
         if usar_recebimentos_conta_azul
         else recebimentos_conta_corrente_periodo
         if usar_conta_corrente_clinicorp
+        else recebimentos_oficiais_belle_periodo
+        if usar_recebimentos_oficiais_belle
         else (
             recebimentos_belle_periodo + conciliacao_periodo["total"]
             if recebimentos_belle_periodo > 0
@@ -6730,6 +7057,16 @@ elif st.session_state.pagina == "visao":
         )
     )
     antecipacoes_periodo = calcular_antecipacoes(df_antecipacao_periodo)
+    antecipacoes_maquininha_periodo = calcular_antecipacoes_maquininha(
+        df_infinity_base_periodo
+    )
+    antecipacoes_periodo = {
+        chave: (
+            float(antecipacoes_periodo.get(chave, 0.0))
+            + float(antecipacoes_maquininha_periodo.get(chave, 0.0))
+        )
+        for chave in ["recebido", "custo", "liquido"]
+    }
     pagamentos_periodo = pagamentos_periodo_global
     custos_fixos_periodo = pagamentos_periodo["fixos"]
     custos_variaveis_periodo = pagamentos_periodo["variaveis"]
@@ -7587,12 +7924,11 @@ elif st.session_state.pagina == "detalhes":
     )
     st.caption(f"Registros filtrados pelo período global: {periodo_label}.")
 
-    tab_contas, tab_receb, tab_vendas, tab_infinity, tab_antecipacao = st.tabs([
+    tab_contas, tab_receb, tab_vendas, tab_infinity = st.tabs([
         "🔴 Contas Pagas",
         "🟢 Recebimentos",
         "🔵 Vendas",
         "💳 Maquininhas",
-        "💸 Antecipações",
     ])
 
     with tab_contas:
@@ -7847,7 +8183,11 @@ elif st.session_state.pagina == "detalhes":
                 f'<tbody>{rows}</tbody></table>',
                 unsafe_allow_html=True,
             )
-        elif usar_conta_corrente_clinicorp or recebimentos_belle_periodo > 0:
+        elif (
+            usar_conta_corrente_clinicorp
+            or usar_recebimentos_oficiais_belle
+            or recebimentos_belle_periodo > 0
+        ):
             if usar_conta_corrente_clinicorp:
                 df_rec = pd.DataFrame()
             elif recebimentos_infinity_extrato_periodo > 0:
@@ -7872,6 +8212,8 @@ elif st.session_state.pagina == "detalhes":
             total_recebimentos_detalhes = (
                 recebimentos_conta_corrente_periodo
                 if usar_conta_corrente_clinicorp
+                else recebimentos_oficiais_belle_periodo
+                if usar_recebimentos_oficiais_belle
                 else recebimentos_belle_periodo + conciliacao_banco_detalhes["total"]
             )
             st.markdown(
@@ -7880,7 +8222,7 @@ elif st.session_state.pagina == "detalhes":
                     <div class="kpi-label">Recebimentos</div>
                     <div class="kpi-value">{fmt_brl(total_recebimentos_detalhes)}</div>
                     <div class="kpi-footer">
-                        {"Conta corrente oficial · cards abaixo compõem este total" if usar_conta_corrente_clinicorp else "Caixa, maquininhas e banco direto"}
+                        {"Conta corrente oficial · cards abaixo compõem este total" if usar_conta_corrente_clinicorp else "Contas a receber do Belle" if usar_recebimentos_oficiais_belle else "Caixa, maquininhas e banco direto"}
                     </div>
                 </div>
                 """,
@@ -8482,17 +8824,40 @@ elif st.session_state.pagina == "detalhes":
                 .fillna(0)
                 .sum()
             )
+            entradas_maquininha_total = (
+                df_infinity_base_periodo[
+                    pd.to_numeric(
+                        df_infinity_base_periodo.get("valor", 0),
+                        errors="coerce",
+                    ).fillna(0) > 0
+                ].copy()
+                if df_infinity_base_periodo is not None
+                and not df_infinity_base_periodo.empty
+                else pd.DataFrame()
+            )
+            total_entradas_maquininha = float(
+                pd.to_numeric(
+                    entradas_maquininha_total.get(
+                        "valor",
+                        pd.Series(0, index=entradas_maquininha_total.index),
+                    ),
+                    errors="coerce",
+                ).fillna(0).sum()
+            )
             saidas_maquininha_view = float(
                 pd.to_numeric(
                     df_maquininhas_view.loc[
-                        pd.to_numeric(df_maquininhas_view["valor"], errors="coerce").fillna(0) < 0,
+                        pd.to_numeric(
+                            df_maquininhas_view["valor"],
+                            errors="coerce",
+                        ).fillna(0) < 0,
                         "valor",
                     ],
                     errors="coerce",
                 ).fillna(0).abs().sum()
             )
             diferenca_entradas = (
-                recebimentos_infinity_extrato_periodo
+                total_entradas_maquininha
                 - recebimentos_maquininha_view
             )
             diferenca_saidas = (
@@ -8519,7 +8884,7 @@ elif st.session_state.pagina == "detalhes":
                     f"""
                         <div class="kpi-card green" style="margin-bottom:1rem">
                             <div class="kpi-label">Entradas maquininhas</div>
-                            <div class="kpi-value green">{fmt_brl(recebimentos_infinity_extrato_periodo)}</div>
+                            <div class="kpi-value green">{fmt_brl(total_entradas_maquininha)}</div>
                             <div class="kpi-footer">Total do extrato importado</div>
                         </div>
                     """,
@@ -8764,67 +9129,6 @@ elif st.session_state.pagina == "detalhes":
                     '<th>% Juros</th><th>Juros</th><th>Líquido</th></tr></thead>'
                     f'<tbody>{rows_clinipay}</tbody></table>',
                     unsafe_allow_html=True,
-                )
-
-    with tab_antecipacao:
-        if df_antecipacao is None or df_antecipacao.empty:
-            st.info(
-                "📥 Importe a planilha Crédito/Débito na categoria "
-                "Antecipação de Cartão."
-            )
-        else:
-            resumo = calcular_antecipacoes(df_antecipacao_periodo)
-            a1, a2, a3 = st.columns(3)
-            a1.metric("Valor antecipado bruto", fmt_brl(resumo["recebido"]))
-            a2.metric("Taxas pagas", fmt_brl(resumo["custo"]))
-            a3.metric("Líquido recebido", fmt_brl(resumo["liquido"]))
-
-            if df_antecipacao_periodo.empty:
-                st.info(
-                    "Nenhuma linha marcada como antecipação no período."
-                )
-            else:
-                antecipadas = df_antecipacao_periodo[
-                    df_antecipacao_periodo["eh_antecipacao"]
-                    .fillna(False)
-                    .astype(bool)
-                ].copy()
-            if not df_antecipacao_periodo.empty and antecipadas.empty:
-                st.info(
-                    "Nenhuma linha marcada como antecipação no período."
-                )
-            elif not df_antecipacao_periodo.empty:
-                colunas = {
-                    "data": "Recebimento",
-                    "titular_cartao": "Titular / Identificação",
-                    "tipo_cartao": "Tipo",
-                    "bandeira_cartao": "Bandeira",
-                    "valor_bruto": "Valor bruto",
-                    "taxas_antecipacao": "Taxas",
-                    "valor": "Valor líquido",
-                    "status_antecipacao": "Status",
-                }
-                tabela_antecipacao = antecipadas[
-                    list(colunas)
-                ].rename(columns=colunas)
-                st.dataframe(
-                    tabela_antecipacao,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Recebimento": st.column_config.DateColumn(
-                            format="DD/MM/YYYY"
-                        ),
-                        "Valor bruto": st.column_config.NumberColumn(
-                            format="R$ %.2f"
-                        ),
-                        "Taxas": st.column_config.NumberColumn(
-                            format="R$ %.2f"
-                        ),
-                        "Valor líquido": st.column_config.NumberColumn(
-                            format="R$ %.2f"
-                        ),
-                    },
                 )
 
 # =========================
