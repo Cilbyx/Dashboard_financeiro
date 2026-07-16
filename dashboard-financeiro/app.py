@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from urllib.parse import urlsplit, urlunsplit
 import logging
 import unicodedata
+from collections import Counter
 from typing import Optional, Tuple, Dict, List
 from dataclasses import dataclass
 from pathlib import Path
@@ -508,6 +509,84 @@ def normalizar_texto(valor) -> str:
     return "".join(c for c in texto if not unicodedata.combining(c)).lower().strip()
 
 
+def agrupar_servico_vendido(servico, tipo_item=None) -> str:
+    nome = str(servico or "").strip()
+    texto = normalizar_texto(nome)
+    tipo = normalizar_texto(tipo_item)
+    texto_busca = f"{texto} {tipo}".strip()
+    if "tirzepa" in texto_busca:
+        return "TIRZEPATIDA"
+    if tipo == "produto":
+        return "PRODUTO"
+    if re.search(
+        r"\b(?:terapia|terapias|tarapia)\s+injetave(?:l|is)\b|"
+        r"injetave(?:l|is)|dupla\s+intramuscular|mesoterapia",
+        texto_busca,
+    ):
+        return "INJETÁVEIS"
+    if (
+        "programa" in texto_busca
+        or "protocolo" in texto_busca
+        or re.search(r"\b6\s+meses?\b", texto_busca)
+    ):
+        return "PROGRAMA"
+    if "implante" in texto_busca:
+        return "IMPLANTES"
+    if re.search(r"\bconsulta\b|avaliacao|avaliação|atendimento", texto_busca):
+        return "CONSULTA"
+    return "Outros"
+
+
+def agrupar_procedimento_clinicorp(procedimento) -> str:
+    nome = str(procedimento or "").strip()
+    texto = normalizar_texto(nome)
+    if not texto:
+        return "Serviço não identificado"
+
+    grupos = [
+        (r"confissao\s+de\s+divida|confissão\s+de\s+dívida", "Outras receitas"),
+        (
+            r"produto|booster\s+firmador|serum|sérum|creme|protetor|stick|"
+            r"sabonete|cicatri|pelicula\s+dermica|película\s+dermica|"
+            r"cosmebeauty|skincare|reparador|suplemento|complex\s+suplemento|"
+            r"\bcinta\b|detox|funil|capsulas|cápsulas|max\s+suplemento",
+            "Produtos",
+        ),
+        (r"ultralift", "Ultralift"),
+        (r"\bmetodo\b|\bmétodo\b", "Método"),
+        (r"microagulh", "Microagulhamento"),
+        (
+            r"design|limpeza\s+de\s+pele|limpeza|demais\s+procedimentos|"
+            r"estetica|estética",
+            "Estética",
+        ),
+        (
+            r"\bspa\b|massagem|hidratacao|hidratação|hydra|aqua",
+            "Procedimentos/Serviços",
+        ),
+        (r"bioimped", "Bioimpedância"),
+        (r"\bblur\b", "Blur"),
+        (r"rejuvenize", "Rejuvenize"),
+        (r"preench", "Preenchimentos"),
+        (r"bioestimul", "Bioestimuladores"),
+        (r"\btoxina\b|botox|botulin", "Toxina Botulínica"),
+        (r"skin\s*booster|skinbooster", "Skinbooster"),
+        (r"laser", "Laser"),
+        (r"peeling", "Peelings"),
+        (r"fios?\s+de\s+sustentacao|fio\s+pdo|\bpdo\b", "Fios de Sustentação"),
+        (r"ultrassom|ultraformer|liftera", "Ultrassom Microfocado"),
+        (r"implante", "Implantes"),
+        (r"injetave(?:l|is)|intramuscular|mesoterapia", "Injetáveis"),
+        (r"programa|protocolo", "Programas"),
+        (r"\bconsulta\b|avaliacao|avaliação|atendimento", "Consultas"),
+        (r"\bretorno\b", "Retornos"),
+    ]
+    for padrao, rotulo in grupos:
+        if re.search(padrao, texto):
+            return rotulo
+    return nome
+
+
 def nome_banco_brasileiro(codigo_ou_nome) -> str:
     banco = str(codigo_ou_nome or "").strip()
     if not banco:
@@ -646,14 +725,21 @@ def classificar_grupo_custo(df: pd.DataFrame) -> pd.Series:
         r"antecipacao\s+de\s+lucro|antecipação\s+de\s+lucro",
         regex=True,
     )
-    retirada = categorias.str.contains(
-        r"retirada\s*(de\s*)?lucro|distribuicao\s*(de\s*)?lucro|"
-        r"pro[\s-]*labore|socio|sócio",
+    pro_labore = texto.str.contains(
+        r"pro[\s-]*labore|pró[\s-]*labore",
         regex=True,
-    ) | descricoes.str.contains(
+    )
+    retirada = (
+        categorias.str.contains(
         r"retirada\s*(de\s*)?lucro|distribuicao\s*(de\s*)?lucro|"
-        r"pro[\s-]*labore|socio|sócio",
+        r"socio|sócio",
         regex=True,
+        )
+        | descricoes.str.contains(
+        r"retirada\s*(de\s*)?lucro|distribuicao\s*(de\s*)?lucro|"
+        r"socio|sócio",
+        regex=True,
+        )
     )
     grupo_fixo = (
         tipos.str.fullmatch(r".*fixo.*")
@@ -678,10 +764,11 @@ def classificar_grupo_custo(df: pd.DataFrame) -> pd.Series:
     return pd.Series(
         [
             "Antecipação de Lucro" if a else
+            "Pró-labore" if p else
             "Retirada de Lucro" if r else
             "Custo Fixo" if f else
             "Custo Variável"
-            for a, r, f in zip(antecipacao_lucro, retirada, fixo)
+            for a, p, r, f in zip(antecipacao_lucro, pro_labore, retirada, fixo)
         ],
         index=df.index,
     )
@@ -810,7 +897,7 @@ def filtrar_por_periodo(
 ) -> pd.DataFrame:
     if df is None or df.empty or "data" not in df.columns:
         return pd.DataFrame()
-    datas = pd.to_datetime(df["data"], errors="coerce")
+    datas = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
     return df.loc[datas.between(inicio, fim, inclusive="both")].copy()
 
 
@@ -856,6 +943,15 @@ def filtrar_movimentos_validos_recebimento(
     )
     excluir = texto.str.contains(
         r"transferencia\s+entre\s+contas|transf\.?\s+entre\s+contas|"
+        r"transf(?:erencia)?\s+(?:mesma\s+)?titularidade|"
+        r"transf(?:erencia)?\s+(?:entre|p/|para)\s+(?:minhas\s+)?contas?|"
+        r"transf(?:erencia)?\s+(?:conta\s+propria|propria|mesma\s+empresa)|"
+        r"credito\s+transf(?:erencia)?\s+(?:propria|entre\s+contas)|"
+        r"\bted\b.*(?:mesma\s+titularidade|conta\s+propria)|"
+        r"\bdoc\b.*(?:mesma\s+titularidade|conta\s+propria)|"
+        r"resgate\s+(?:de\s+)?(?:aplicacao|aplicação|investimento)|"
+        r"aplicacao\s+(?:automatica|financeira)|aplicação\s+(?:automatica|financeira)|"
+        r"credito\s+(?:de\s+)?resgate|resgate\s+automatico|resgate\s+automático|"
         r"saldo\s+do\s+dia|saldo\s+anterior|saldo\s+total|"
         r"saldo\s+disponivel|saldo\s+movimentacao|"
         r"antecipacao\s+de\s+cartao|antecipacao\s+de\s+maquininha|"
@@ -866,6 +962,48 @@ def filtrar_movimentos_validos_recebimento(
     if "eh_antecipacao" in movimentos.columns:
         excluir = excluir | movimentos["eh_antecipacao"].fillna(False).astype(bool)
     return movimentos[~excluir].copy()
+
+
+def separar_recebimentos_conta_corrente_clinicorp(
+    df_banco: Optional[pd.DataFrame],
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    if df_banco is None or df_banco.empty or "valor" not in df_banco.columns:
+        return pd.DataFrame(), pd.DataFrame()
+
+    creditos_brutos = df_banco[
+        pd.to_numeric(df_banco["valor"], errors="coerce").fillna(0) > 0
+    ].copy()
+    if creditos_brutos.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    tipos = creditos_brutos.get(
+        "tipo_transacao",
+        pd.Series("", index=creditos_brutos.index),
+    ).fillna("").map(normalizar_texto)
+    arquivos = creditos_brutos.get(
+        "_arquivo_origem",
+        pd.Series("", index=creditos_brutos.index),
+    ).fillna("").map(normalizar_texto)
+    fontes = creditos_brutos.get(
+        "fonte",
+        pd.Series("", index=creditos_brutos.index),
+    ).fillna("").map(normalizar_texto)
+    conta_corrente_clinicorp = (
+        tipos.str.contains("entrada", regex=False)
+        & (
+            arquivos.str.contains("conta corrente", regex=False)
+            | fontes.str.contains("bancos", regex=False)
+        )
+    )
+    if conta_corrente_clinicorp.any():
+        operacionais = creditos_brutos[conta_corrente_clinicorp].copy()
+        ignorados = creditos_brutos[~conta_corrente_clinicorp].copy()
+        return operacionais, ignorados
+
+    creditos = filtrar_movimentos_validos_recebimento(creditos_brutos)
+    if creditos.empty:
+        return pd.DataFrame(), creditos_brutos.copy()
+    return pd.DataFrame(), creditos.copy()
 
 
 def remover_repasses_maquininha_do_banco(
@@ -902,6 +1040,56 @@ def remover_repasses_clinipay_do_banco(
         regex=True,
     )
     return movimentos[~repasse_clinipay].copy()
+
+
+def remover_fluxo_duplicado_clinipay(
+    df_fluxo: Optional[pd.DataFrame],
+    df_clinipay: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    if df_fluxo is None or df_fluxo.empty:
+        return pd.DataFrame() if df_fluxo is None else df_fluxo.copy()
+    if df_clinipay is None or df_clinipay.empty:
+        return df_fluxo.copy()
+    if "data" not in df_fluxo.columns or "valor" not in df_fluxo.columns:
+        return df_fluxo.copy()
+    if "data" not in df_clinipay.columns or "valor" not in df_clinipay.columns:
+        return df_fluxo.copy()
+
+    clinipay = df_clinipay.copy()
+    clinipay_valores = pd.to_numeric(
+        clinipay["valor"],
+        errors="coerce",
+    ).fillna(0)
+    clinipay_datas = pd.to_datetime(
+        clinipay["data"],
+        errors="coerce",
+    ).dt.date
+    chaves_clinipay = Counter(
+        (data, round(float(valor), 2))
+        for data, valor in zip(clinipay_datas, clinipay_valores)
+        if pd.notna(data) and float(valor) > 0
+    )
+    if not chaves_clinipay:
+        return df_fluxo.copy()
+
+    fluxo = df_fluxo.copy()
+    fluxo_valores = pd.to_numeric(
+        fluxo["valor"],
+        errors="coerce",
+    ).fillna(0)
+    fluxo_datas = pd.to_datetime(
+        fluxo["data"],
+        errors="coerce",
+    ).dt.date
+    manter = []
+    for data, valor in zip(fluxo_datas, fluxo_valores):
+        chave = (data, round(float(valor), 2))
+        if pd.notna(data) and float(valor) > 0 and chaves_clinipay.get(chave, 0) > 0:
+            chaves_clinipay[chave] -= 1
+            manter.append(False)
+        else:
+            manter.append(True)
+    return fluxo.loc[manter].copy()
 
 
 def calcular_antecipacoes(
@@ -1175,6 +1363,7 @@ def conciliar_pagamentos(
         "fixos": 0.0,
         "variaveis": 0.0,
         "retiradas": 0.0,
+        "pro_labore": 0.0,
         "antecipacoes_lucro": 0.0,
         "total_planilha": 0.0,
         "total_banco": 0.0,
@@ -1225,6 +1414,7 @@ def conciliar_pagamentos(
         "Custo Fixo": 0.0,
         "Custo Variável": 0.0,
         "Retirada de Lucro": 0.0,
+        "Pró-labore": 0.0,
         "Antecipação de Lucro": 0.0,
     }
     for _, conta in contas_importadas.sort_values(
@@ -1270,6 +1460,7 @@ def conciliar_pagamentos(
             "fixos": totais["Custo Fixo"],
             "variaveis": totais["Custo Variável"],
             "retiradas": totais["Retirada de Lucro"],
+            "pro_labore": totais["Pró-labore"],
             "antecipacoes_lucro": totais["Antecipação de Lucro"],
             "total_planilha": total_planilha,
             "total_banco": 0.0,
@@ -1297,6 +1488,7 @@ def conciliar_pagamentos(
         "fixos": totais["Custo Fixo"],
         "variaveis": totais["Custo Variável"],
         "retiradas": totais["Retirada de Lucro"],
+        "pro_labore": totais["Pró-labore"],
         "antecipacoes_lucro": totais["Antecipação de Lucro"],
         "total_planilha": total_planilha,
         "total_banco": total_debitos,
@@ -1318,7 +1510,10 @@ def resposta_assistente(
     antecipacoes_lucro_periodo: float = 0.0,
 ) -> str:
     texto = normalizar_texto(pergunta)
-    resultado_operacional_periodo = recebimentos_periodo - despesas_periodo
+    saidas_lucro_periodo = retiradas_periodo + antecipacoes_lucro_periodo
+    resultado_operacional_periodo = (
+        recebimentos_periodo - despesas_periodo - saidas_lucro_periodo
+    )
     resultado_final_periodo = resultado_operacional_periodo
     margem_operacional = (
         resultado_operacional_periodo / recebimentos_periodo * 100
@@ -1351,7 +1546,8 @@ def resposta_assistente(
         return (
             f"Resultado: {fmt_brl_chat(resultado_operacional_periodo)} "
             f"({situacao}), com margem de {margem_txt}%.\n\n"
-            "A conta usada é recebimentos menos despesas.\n\n"
+            "A conta usada é recebimentos menos despesas, retirada de lucro "
+            "e antecipação de lucro.\n\n"
             f"Resultado final: "
             f"{fmt_brl_chat(resultado_final_periodo)}."
         )
@@ -2426,7 +2622,10 @@ def preparar_visao_conta_azul(uploaded_file, tipo: str) -> pd.DataFrame:
 
 
 def localizar_valor_venda_conta_azul(colunas) -> Optional[object]:
-    candidatos_liquido = []
+    candidatos_liquido_venda = []
+    candidatos_total = []
+    candidatos_financeiro = []
+    candidatos_genericos = []
     candidatos_bruto = []
     for coluna in colunas:
         texto = normalizar_texto(coluna)
@@ -2437,12 +2636,24 @@ def localizar_valor_venda_conta_azul(colunas) -> Optional[object]:
         if "bruto" in texto:
             candidatos_bruto.append(coluna)
             continue
-        if "liqu" in texto or "quido" in texto or "l�quido" in str(coluna).lower():
-            candidatos_liquido.append(coluna)
+        if "financeiro" in texto:
+            candidatos_financeiro.append(coluna)
             continue
-        candidatos_liquido.append(coluna)
-    if candidatos_liquido:
-        return candidatos_liquido[-1]
+        if "liqu" in texto or "quido" in texto or "l�quido" in str(coluna).lower():
+            candidatos_liquido_venda.append(coluna)
+            continue
+        if "total" in texto:
+            candidatos_total.append(coluna)
+            continue
+        candidatos_genericos.append(coluna)
+    if candidatos_liquido_venda:
+        return candidatos_liquido_venda[-1]
+    if candidatos_total:
+        return candidatos_total[-1]
+    if candidatos_financeiro:
+        return candidatos_financeiro[-1]
+    if candidatos_genericos:
+        return candidatos_genericos[-1]
     if candidatos_bruto:
         return candidatos_bruto[-1]
     return None
@@ -2523,15 +2734,25 @@ def processar_conta_azul_vendas(uploaded_file) -> pd.DataFrame:
             mapa = {normalizar_texto(col): col for col in df.columns}
 
             def localizar(*opcoes):
+                opcoes_norm = [normalizar_texto(opcao) for opcao in opcoes]
                 for opcao in opcoes:
                     coluna = mapa.get(normalizar_texto(opcao))
                     if coluna is not None:
+                        return coluna
+                for chave, coluna in mapa.items():
+                    if any(opcao in chave for opcao in opcoes_norm):
                         return coluna
                 return None
 
             col_numero = localizar("número da venda", "numero da venda")
             col_cliente = localizar("cliente")
             col_data = localizar("data da venda", "data")
+            col_tipo_item = localizar("tipo de item", "tipo item")
+            col_servico = localizar(
+                "serviço", "servico", "produto", "descrição",
+                "descricao", "categoria", "nome do produto", "nome do serviço",
+                "nome do servico", "nome do item", "item vendido"
+            )
             col_valor = localizar_valor_venda_conta_azul(df.columns)
             if not col_data or not col_valor:
                 continue
@@ -2546,6 +2767,7 @@ def processar_conta_azul_vendas(uploaded_file) -> pd.DataFrame:
                 df = df[~total_geral].copy()
             df["data"] = pd.to_datetime(df[col_data], dayfirst=True, errors="coerce")
             df["valor"] = df[col_valor].apply(parse_valor_br)
+            df["valor_liquido"] = df["valor"]
             cliente = (
                 df[col_cliente].fillna("").astype(str).str.strip()
                 if col_cliente else pd.Series("", index=df.index)
@@ -2554,10 +2776,24 @@ def processar_conta_azul_vendas(uploaded_file) -> pd.DataFrame:
                 df[col_numero].fillna("").astype(str).str.strip()
                 if col_numero else pd.Series("", index=df.index)
             )
+            servico = (
+                df[col_servico].fillna("").astype(str).str.strip()
+                if col_servico else pd.Series("", index=df.index)
+            )
+            tipo_item = (
+                df[col_tipo_item].fillna("").astype(str).str.strip()
+                if col_tipo_item else pd.Series("", index=df.index)
+            )
             df["descricao"] = (
                 "Venda " + numero.replace("nan", "") + " - " + cliente
+                + " - " + servico.replace("nan", "")
             ).str.strip(" -")
             df.loc[df["descricao"] == "", "descricao"] = "Venda Conta Azul"
+            df["servico_vendido"] = servico
+            df.loc[df["servico_vendido"] == "", "servico_vendido"] = (
+                "Serviço não identificado"
+            )
+            df["tipo_item_vendido"] = tipo_item
             df["status"] = "Aprovada"
             df["fonte_venda"] = "Conta Azul"
             df = df.dropna(subset=["data", "valor"])
@@ -2805,6 +3041,7 @@ def processar_orcamentos(uploaded_file) -> pd.DataFrame:
             "paciente", "cliente", "nome do cliente", "nome do paciente"
         )
         col_procedimentos = localizar(
+            "tipo de procedimento", "tipo procedimento",
             "procedimentos", "procedimento", "descrição", "descricao",
             "orçamento", "orcamento", "projeto"
         )
@@ -2837,6 +3074,7 @@ def processar_orcamentos(uploaded_file) -> pd.DataFrame:
             return pd.DataFrame()
         df["status"] = df[col_status].fillna("").astype(str).str.strip()
         df["valor"] = df[col_valor].apply(parse_valor_br)
+        df["valor_liquido"] = df["valor"]
         df = df.dropna(subset=["valor"])
         df = df[df["valor"] > 0]
         df["data"] = (
@@ -2860,9 +3098,16 @@ def processar_orcamentos(uploaded_file) -> pd.DataFrame:
             clientes + " — " + procedimentos
         ).str.strip(" —")
         df.loc[df["descricao"] == "", "descricao"] = "Orçamento aprovado"
+        df["servico_vendido"] = procedimentos
+        df.loc[df["servico_vendido"] == "", "servico_vendido"] = (
+            "Serviço não identificado"
+        )
         df["fonte_venda"] = "Clinicorp"
         logger.info("Approved budgets processed: %s", len(df))
-        return df[["data", "descricao", "valor", "status", "fonte_venda"]]
+        return df[[
+            "data", "descricao", "valor", "valor_liquido", "status", "fonte_venda",
+            "servico_vendido",
+        ]]
     except Exception as e:
         logger.error("Error processing budgets: %s", e)
         st.error(f"❌ Erro ao processar orçamentos: {str(e)}")
@@ -3355,6 +3600,13 @@ def processar_excel_bancos(uploaded_file) -> pd.DataFrame:
 
             col_data = indice_coluna("data")
             col_desc = indice_coluna("descri", "historico", "lançamento", "lancamento")
+            col_nome = indice_coluna("nome", "cliente", "paciente")
+            col_tipo_movimento = indice_coluna("tipo")
+            col_tipo_lancamento = indice_coluna(
+                "tipo lancamento",
+                "tipo lançamento",
+                "tipo lan",
+            )
             col_doc = indice_coluna("documento", "doc")
             col_valor = indice_coluna("valor")
             col_saldo = indice_coluna("saldo")
@@ -3387,6 +3639,21 @@ def processar_excel_bancos(uploaded_file) -> pd.DataFrame:
                     if col_doc is not None and pd.notna(linha.iloc[col_doc])
                     else ""
                 )
+                nome_lancamento = (
+                    str(linha.iloc[col_nome]).strip()
+                    if col_nome is not None and pd.notna(linha.iloc[col_nome])
+                    else ""
+                )
+                tipo_movimento = (
+                    str(linha.iloc[col_tipo_movimento]).strip()
+                    if col_tipo_movimento is not None and pd.notna(linha.iloc[col_tipo_movimento])
+                    else ""
+                )
+                tipo_lancamento = (
+                    str(linha.iloc[col_tipo_lancamento]).strip()
+                    if col_tipo_lancamento is not None and pd.notna(linha.iloc[col_tipo_lancamento])
+                    else ""
+                )
                 saldo = (
                     parse_valor_br(linha.iloc[col_saldo])
                     if col_saldo is not None else None
@@ -3397,6 +3664,10 @@ def processar_excel_bancos(uploaded_file) -> pd.DataFrame:
                     "memo": descricao,
                     "tipo_ofx": documento or "EXCEL",
                     "fonte": "Bancos",
+                    "nome": nome_lancamento,
+                    "tipo_transacao": tipo_movimento,
+                    "tipo_lancamento": tipo_lancamento,
+                    "_arquivo_origem": getattr(uploaded_file, "name", ""),
                     "_saldo_ofx": saldo_banco,
                     "_data_saldo_ofx": data_saldo,
                     "_conta_ofx": conta,
@@ -4275,6 +4546,14 @@ def processar_multiplos_arquivos(
         return pd.DataFrame()
 
     combinado = pd.concat(quadros, ignore_index=True, sort=False)
+    nome_processador = getattr(processador, "__name__", "")
+    if nome_processador in {
+        "processar_bancos",
+        "processar_excel_bancos",
+        "processar_infinity_pay",
+    }:
+        return combinado.reset_index(drop=True)
+
     colunas_deduplicacao = [
         coluna
         for coluna in combinado.columns
@@ -4966,7 +5245,7 @@ if st.session_state.mostrar_modal_upload:
                 "Contas a pagar",
                 "Orçamentos",
                 "Extrato Clinipay",
-                "Fluxo de caixa",
+                "Conta corrente",
                 "Cartão de crédito",
             ])
             with clinic1:
@@ -5004,14 +5283,14 @@ if st.session_state.mostrar_modal_upload:
                     )
             with clinic4:
                 fc_up = st.file_uploader(
-                    "Fluxo de caixa",
-                    type=formatos_planilha,
+                    "Conta corrente do Clinicorp",
+                    type=["ofx", *formatos_planilha],
                     key=f"fc_up_{upload_version}",
                     accept_multiple_files=True,
                 )
                 if fc_up:
                     st.session_state.df_fluxo_caixa = processar_multiplos_arquivos(
-                        fc_up, processar_fluxo_caixa
+                        fc_up, processar_bancos
                     )
             with clinic5:
                 antecipacao_up = st.file_uploader(
@@ -5343,12 +5622,13 @@ if df_exc is not None and not df_exc.empty:
     custos_fixos     = df_exc[df_exc["grupo_custo"] == "Custo Fixo"]["valor"].sum()
     custos_variaveis = df_exc[df_exc["grupo_custo"] == "Custo Variável"]["valor"].sum()
     retiradas        = df_exc[df_exc["grupo_custo"] == "Retirada de Lucro"]["valor"].sum()
+    pro_labore       = df_exc[df_exc["grupo_custo"] == "Pró-labore"]["valor"].sum()
     antecipacoes_lucro = df_exc[
         df_exc["grupo_custo"] == "Antecipação de Lucro"
     ]["valor"].sum()
-    despesas_total   = custos_fixos + custos_variaveis
+    despesas_total   = custos_fixos + custos_variaveis + pro_labore
 else:
-    despesas_total = custos_fixos = custos_variaveis = retiradas = antecipacoes_lucro = 0.0
+    despesas_total = custos_fixos = custos_variaveis = retiradas = pro_labore = antecipacoes_lucro = 0.0
 
 df_exc_periodo = (
     filtrar_por_periodo(df_exc, inicio_periodo, fim_periodo)
@@ -5385,6 +5665,47 @@ df_fluxo_periodo = (
     filtrar_por_periodo(df_fluxo_caixa, inicio_periodo, fim_periodo)
     if periodo_valido else pd.DataFrame()
 )
+if not df_fluxo_periodo.empty:
+    arquivos_fluxo = df_fluxo_periodo.get(
+        "_arquivo_origem",
+        pd.Series("", index=df_fluxo_periodo.index),
+    ).fillna("").map(normalizar_texto)
+    tipos_fluxo = df_fluxo_periodo.get(
+        "tipo_transacao",
+        pd.Series("", index=df_fluxo_periodo.index),
+    ).fillna("").map(normalizar_texto)
+    tipos_lancamento_fluxo = df_fluxo_periodo.get(
+        "tipo_lancamento",
+        pd.Series("", index=df_fluxo_periodo.index),
+    ).fillna("").map(normalizar_texto)
+    descricoes_fluxo = df_fluxo_periodo.get(
+        "memo",
+        pd.Series("", index=df_fluxo_periodo.index),
+    ).fillna("").map(normalizar_texto)
+    mascara_conta_corrente_clinicorp = (
+        arquivos_fluxo.str.contains("conta corrente", regex=False)
+        | tipos_lancamento_fluxo.str.contains(
+            r"recebimento\s+de\s+pagamento|pagamento\s+recebido\s+paciente",
+            regex=True,
+        )
+        | (
+            tipos_fluxo.str.contains("entrada|saida|saída|vendas", regex=True)
+            & descricoes_fluxo.str.contains(
+                r"reconciliacao\s+de\s+pagamento|reconciliação\s+de\s+pagamento|"
+                r"confirmacao\s+pix|confirmação\s+pix|pagamento\s+de\s+tratamento|"
+                r"pagamento\s+recebido\s+paciente",
+                regex=True,
+            )
+        )
+    )
+    df_conta_corrente_clinicorp_periodo = df_fluxo_periodo[
+        mascara_conta_corrente_clinicorp
+    ].copy()
+    df_fluxo_periodo = df_fluxo_periodo[
+        ~mascara_conta_corrente_clinicorp
+    ].copy()
+else:
+    df_conta_corrente_clinicorp_periodo = pd.DataFrame()
 df_conta_azul_receber_periodo = (
     filtrar_por_periodo(df_conta_azul_receber, inicio_periodo, fim_periodo)
     if periodo_valido else pd.DataFrame()
@@ -5830,6 +6151,37 @@ diferenca_vendas_gerencial_receber = (
     if tem_gerencial_belle else 0.0
 )
 df_banco_base_periodo = df_banco_periodo
+quadros_banco_base_periodo = [
+    quadro
+    for quadro in [
+        df_banco_periodo,
+        df_conta_corrente_clinicorp_periodo,
+    ]
+    if quadro is not None and not quadro.empty
+]
+df_banco_base_periodo = (
+    pd.concat(quadros_banco_base_periodo, ignore_index=True, sort=False)
+    if quadros_banco_base_periodo else pd.DataFrame()
+)
+(
+    df_recebimentos_conta_corrente_periodo,
+    df_creditos_ignorados_conta_corrente_periodo,
+) = separar_recebimentos_conta_corrente_clinicorp(
+    df_banco_base_periodo
+)
+recebimentos_conta_corrente_periodo = (
+    float(
+        pd.to_numeric(
+            df_recebimentos_conta_corrente_periodo.get("valor", 0),
+            errors="coerce",
+        ).fillna(0).sum()
+    )
+    if not df_recebimentos_conta_corrente_periodo.empty else 0.0
+)
+usar_conta_corrente_clinicorp = (
+    "clinicorp" in sistema_vendas_ativo
+    and not df_recebimentos_conta_corrente_periodo.empty
+)
 df_infinity_base_periodo = normalizar_bruto_taxa_maquininha(
     df_infinity_periodo
 )
@@ -5852,6 +6204,10 @@ else:
     df_clinipay_base_periodo = pd.DataFrame()
     df_clinipay_extrato_periodo = pd.DataFrame()
 df_fluxo_base_periodo = df_fluxo_periodo
+df_fluxo_base_periodo = remover_fluxo_duplicado_clinipay(
+    df_fluxo_base_periodo,
+    df_clinipay_base_periodo,
+)
 df_exc_base_periodo = df_exc_periodo
 df_despesas_recebimentos_conta_azul = despesas_recebimentos_conta_azul(
     df_conta_azul_receber
@@ -6006,6 +6362,8 @@ conciliacao_geral = conciliar_recebimentos(
 recebimentos = (
     recebimentos_conta_azul_periodo
     if usar_recebimentos_conta_azul
+    else recebimentos_conta_corrente_periodo
+    if usar_conta_corrente_clinicorp
     else (
         recebimentos_belle_periodo + conciliacao_geral["total"]
         if recebimentos_belle_periodo > 0
@@ -6019,32 +6377,45 @@ pagamentos_geral = conciliar_pagamentos(
 despesas_geral = (
     pagamentos_geral["fixos"]
     + pagamentos_geral["variaveis"]
-    + pagamentos_geral["retiradas"]
+    + pagamentos_geral.get("pro_labore", 0.0)
+)
+saidas_lucro_geral = (
+    pagamentos_geral["retiradas"]
+    + pagamentos_geral.get("antecipacoes_lucro", 0.0)
 )
 resultado = (
     recebimentos
     - despesas_geral
+    - saidas_lucro_geral
 )
 
 def criar_resumo_periodo() -> Dict[str, float]:
     despesas_periodo = (
         pagamentos_periodo_global["fixos"]
         + pagamentos_periodo_global["variaveis"]
+        + pagamentos_periodo_global.get("pro_labore", 0.0)
     )
     retiradas_periodo = pagamentos_periodo_global["retiradas"]
+    pro_labore_periodo = pagamentos_periodo_global.get("pro_labore", 0.0)
     antecipacoes_lucro_periodo = pagamentos_periodo_global.get(
         "antecipacoes_lucro",
         0.0,
     )
-    despesas_resultado_periodo = despesas_periodo + retiradas_periodo
-    resultado_operacional_periodo = recebimentos - despesas_resultado_periodo
+    saidas_lucro_periodo = (
+        retiradas_periodo
+        + antecipacoes_lucro_periodo
+    )
+    resultado_operacional_periodo = (
+        recebimentos - despesas_periodo - saidas_lucro_periodo
+    )
     resultado_final_periodo = resultado_operacional_periodo
     return {
         "recebimentos": float(recebimentos),
-        "despesas": float(despesas_resultado_periodo),
+        "despesas": float(despesas_periodo),
         "custos_fixos": float(pagamentos_periodo_global["fixos"]),
         "custos_variaveis": float(pagamentos_periodo_global["variaveis"]),
         "retiradas": float(retiradas_periodo),
+        "pro_labore": float(pro_labore_periodo),
         "antecipacoes_lucro": float(antecipacoes_lucro_periodo),
         "vendas": float(vendas_referencia_periodo),
         "resultado_operacional": float(resultado_operacional_periodo),
@@ -6350,30 +6721,38 @@ elif st.session_state.pagina == "visao":
     recebimentos_periodo = (
         recebimentos_conta_azul_periodo
         if usar_recebimentos_conta_azul
+        else recebimentos_conta_corrente_periodo
+        if usar_conta_corrente_clinicorp
         else (
             recebimentos_belle_periodo + conciliacao_periodo["total"]
             if recebimentos_belle_periodo > 0
             else conciliacao_periodo["total"]
         )
     )
-    antecipacoes_periodo = calcular_antecipacoes(df_banco_base_periodo)
+    antecipacoes_periodo = calcular_antecipacoes(df_antecipacao_periodo)
     pagamentos_periodo = pagamentos_periodo_global
     custos_fixos_periodo = pagamentos_periodo["fixos"]
     custos_variaveis_periodo = pagamentos_periodo["variaveis"]
     retiradas_periodo = pagamentos_periodo["retiradas"]
+    pro_labore_periodo = pagamentos_periodo.get("pro_labore", 0.0)
     antecipacoes_lucro_periodo = pagamentos_periodo.get(
         "antecipacoes_lucro",
         0.0,
     )
-    despesas_periodo = custos_fixos_periodo + custos_variaveis_periodo
-    despesas_com_retiradas_periodo = (
-        despesas_periodo
-        + retiradas_periodo
+    despesas_periodo = (
+        custos_fixos_periodo
+        + custos_variaveis_periodo
+        + pro_labore_periodo
+    )
+    saidas_lucro_periodo = (
+        retiradas_periodo
+        + antecipacoes_lucro_periodo
     )
     resultado_operacional_periodo = (
-        recebimentos_periodo - despesas_com_retiradas_periodo
+        recebimentos_periodo - despesas_periodo - saidas_lucro_periodo
     )
     resultado_periodo = resultado_operacional_periodo
+    resultado_antes_retiradas_periodo = recebimentos_periodo - despesas_periodo
 
     _, topo_assistente = st.columns([4, 1.15])
     with topo_assistente:
@@ -6388,7 +6767,7 @@ elif st.session_state.pagina == "visao":
                 periodo_label,
                 recebimentos_periodo,
                 vendas_aprovadas_periodo,
-                despesas_com_retiradas_periodo,
+                despesas_periodo,
                 custos_fixos_periodo,
                 custos_variaveis_periodo,
                 retiradas_periodo,
@@ -6399,17 +6778,17 @@ elif st.session_state.pagina == "visao":
     k1, k2, k3, k4 = st.columns(4)
     with k1:
         st.markdown(f"""
-        <div class="kpi-card green">
-            <div class="kpi-label">Recebimentos</div>
-            <div class="kpi-value green">{fmt_brl(recebimentos_periodo)}</div>
-            <div class="kpi-footer">{"Caixa, maquininhas e banco direto" if recebimentos_belle_periodo > 0 else "Recebimentos identificados das vendas"}</div>
-        </div>""", unsafe_allow_html=True)
+            <div class="kpi-card green">
+                <div class="kpi-label">Recebimentos</div>
+                <div class="kpi-value green">{fmt_brl(recebimentos_periodo)}</div>
+            <div class="kpi-footer">{"Conta corrente oficial" if usar_conta_corrente_clinicorp else "Caixa, maquininhas e banco direto" if recebimentos_belle_periodo > 0 else "Recebimentos identificados das vendas"}</div>
+            </div>""", unsafe_allow_html=True)
     with k2:
         st.markdown(f"""
         <div class="kpi-card neutral">
             <div class="kpi-label">Despesas</div>
-            <div class="kpi-value red">{fmt_brl_saida(despesas_com_retiradas_periodo)}</div>
-            <div class="kpi-footer">Saídas pagas incluindo pró-labore</div>
+            <div class="kpi-value red">{fmt_brl_saida(despesas_periodo)}</div>
+            <div class="kpi-footer">Custos fixos + variáveis + pró-labore</div>
         </div>""", unsafe_allow_html=True)
     with k3:
         st.markdown(f"""
@@ -6426,9 +6805,12 @@ elif st.session_state.pagina == "visao":
         )
         st.markdown(f"""
         <div class="kpi-card purple">
-            <div class="kpi-label">Resultado</div>
+            <div class="kpi-label">Resultado final</div>
             <div class="kpi-value {cor}">{fmt_brl(resultado_periodo, sinal=True)}</div>
-            <div class="kpi-footer">Recebimentos - despesas · Margem: {margem:.1f}%</div>
+            <div class="kpi-footer">
+                {fmt_brl(resultado_antes_retiradas_periodo)} antes das retiradas ·
+                {fmt_brl_saida(saidas_lucro_periodo)} em retiradas · Margem: {margem:.1f}%
+            </div>
         </div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -6551,9 +6933,13 @@ elif st.session_state.pagina == "visao":
         itens_comp = [
             ("Custo Fixo",        custos_fixos_periodo,     "#7F77DD"),
             ("Custo Variável",    custos_variaveis_periodo, "#F09595"),
+            ("Pró-labore",        pro_labore_periodo,       "#EF9F27"),
         ]
         total_comp = sum(v for _, v, _ in itens_comp)
-        total_retiradas_comp = retiradas_periodo + antecipacoes_lucro_periodo
+        total_retiradas_comp = (
+            retiradas_periodo
+            + antecipacoes_lucro_periodo
+        )
 
         if total_comp <= 0:
             st.markdown('<div style="font-size:0.78rem;color:#4A4A7A;text-align:center;padding:2rem">Sem dados de despesas</div>', unsafe_allow_html=True)
@@ -6654,6 +7040,7 @@ elif st.session_state.pagina == "fechamento":
     custos_fixos_fechamento = pagamentos_fechamento["fixos"]
     custos_variaveis_fechamento = pagamentos_fechamento["variaveis"]
     retiradas_fechamento = pagamentos_fechamento["retiradas"]
+    pro_labore_fechamento = pagamentos_fechamento.get("pro_labore", 0.0)
     antecipacoes_lucro_fechamento = pagamentos_fechamento.get(
         "antecipacoes_lucro",
         0.0,
@@ -6667,6 +7054,8 @@ elif st.session_state.pagina == "fechamento":
     recebimentos_vendas = (
         recebimentos_conta_azul_periodo
         if usar_recebimentos_conta_azul
+        else recebimentos_conta_corrente_periodo
+        if usar_conta_corrente_clinicorp
         else (
             recebimentos_belle_periodo + conciliacao_fechamento["total"]
             if recebimentos_belle_periodo > 0
@@ -6679,9 +7068,15 @@ elif st.session_state.pagina == "fechamento":
     total_despesas = (
         custos_fixos_fechamento
         + custos_variaveis_fechamento
-        + retiradas_fechamento
+        + pro_labore_fechamento
     )
-    resultado_operacional = recebimentos_vendas - total_despesas
+    saidas_lucro_fechamento = (
+        retiradas_fechamento
+        + antecipacoes_lucro_fechamento
+    )
+    resultado_operacional = (
+        recebimentos_vendas - total_despesas - saidas_lucro_fechamento
+    )
     resultado_mes = resultado_operacional
     cor_operacional = "#1D9E75" if resultado_operacional >= 0 else "#F09595"
     cor_resultado   = "#1D9E75" if resultado_mes >= 0 else "#F09595"
@@ -6697,9 +7092,12 @@ elif st.session_state.pagina == "fechamento":
         <tr class="section-title"><td colspan="2">Despesas operacionais</td></tr>
         <tr><td>&nbsp;&nbsp;&nbsp;Custos fixos</td><td style="color:#F09595">{fmt_brl(custos_fixos_fechamento)}</td></tr>
         <tr><td>&nbsp;&nbsp;&nbsp;Custos variáveis</td><td style="color:#F09595">{fmt_brl(custos_variaveis_fechamento)}</td></tr>
-        <tr><td>&nbsp;&nbsp;&nbsp;Pró-labore / retirada</td><td style="color:#F09595">{fmt_brl_saida(retiradas_fechamento)}</td></tr>
+        <tr><td>&nbsp;&nbsp;&nbsp;Pró-labore</td><td style="color:#F09595">{fmt_brl_saida(pro_labore_fechamento)}</td></tr>
         <tr class="total-row"><td>Total despesas operacionais</td><td>{fmt_brl_saida(total_despesas)}</td></tr>
-        <tr class="resultado-row"><td>Resultado (recebimentos - despesas)</td>
+        <tr class="section-title"><td colspan="2">Distribuição de lucro</td></tr>
+        <tr><td>&nbsp;&nbsp;&nbsp;Retirada de lucro</td><td style="color:#F09595">{fmt_brl_saida(retiradas_fechamento)}</td></tr>
+        <tr><td>&nbsp;&nbsp;&nbsp;Antecipação de lucro</td><td style="color:#F09595">{fmt_brl_saida(antecipacoes_lucro_fechamento)}</td></tr>
+        <tr class="resultado-row"><td>Resultado (recebimentos - despesas - retiradas)</td>
             <td style="color:{cor_resultado}">{sinal}{fmt_brl(resultado_mes)}</td></tr>
       </tbody>
     </table>""", unsafe_allow_html=True)
@@ -7212,6 +7610,7 @@ elif st.session_state.pagina == "detalhes":
                         "Custo Fixo",
                         "Custo Variável",
                         "Retirada de Lucro",
+                        "Pró-labore",
                         "Antecipação de Lucro",
                     ],
                     label_visibility="collapsed",
@@ -7254,6 +7653,12 @@ elif st.session_state.pagina == "detalhes":
                         "valor",
                     ].sum()
                 ),
+                "Pró-labore": float(
+                    df_filtrado.loc[
+                        df_filtrado["grupo_custo"] == "Pró-labore",
+                        "valor",
+                    ].sum()
+                ),
                 "Antecipação de Lucro": float(
                     df_filtrado.loc[
                         df_filtrado["grupo_custo"] == "Antecipação de Lucro",
@@ -7261,7 +7666,7 @@ elif st.session_state.pagina == "detalhes":
                     ].sum()
                 ),
             }
-            cols_totais_contas = st.columns(4)
+            cols_totais_contas = st.columns(len(totais_tipo))
             for col_total, (rotulo_total, valor_total) in zip(
                 cols_totais_contas,
                 totais_tipo.items(),
@@ -7292,6 +7697,10 @@ elif st.session_state.pagina == "detalhes":
                 "Retirada de Lucro": (
                     "orange",
                     df_filtrado[df_filtrado["grupo_custo"] == "Retirada de Lucro"],
+                ),
+                "Pró-labore": (
+                    "orange",
+                    df_filtrado[df_filtrado["grupo_custo"] == "Pró-labore"],
                 ),
                 "Antecipação de Lucro": (
                     "orange",
@@ -7438,8 +7847,10 @@ elif st.session_state.pagina == "detalhes":
                 f'<tbody>{rows}</tbody></table>',
                 unsafe_allow_html=True,
             )
-        elif recebimentos_belle_periodo > 0:
-            if recebimentos_infinity_extrato_periodo > 0:
+        elif usar_conta_corrente_clinicorp or recebimentos_belle_periodo > 0:
+            if usar_conta_corrente_clinicorp:
+                df_rec = pd.DataFrame()
+            elif recebimentos_infinity_extrato_periodo > 0:
                 df_infinity_rec = df_entradas_infinity_periodo.copy()
                 df_infinity_rec["descricao"] = df_infinity_rec["memo"]
                 df_rec = pd.concat(
@@ -7459,8 +7870,9 @@ elif st.session_state.pagina == "detalhes":
                 df_fluxo_base_periodo,
             )
             total_recebimentos_detalhes = (
-                recebimentos_belle_periodo
-                + conciliacao_banco_detalhes["total"]
+                recebimentos_conta_corrente_periodo
+                if usar_conta_corrente_clinicorp
+                else recebimentos_belle_periodo + conciliacao_banco_detalhes["total"]
             )
             st.markdown(
                 f"""
@@ -7468,62 +7880,96 @@ elif st.session_state.pagina == "detalhes":
                     <div class="kpi-label">Recebimentos</div>
                     <div class="kpi-value">{fmt_brl(total_recebimentos_detalhes)}</div>
                     <div class="kpi-footer">
-                        Caixa, maquininhas e banco direto
+                        {"Conta corrente oficial · cards abaixo compõem este total" if usar_conta_corrente_clinicorp else "Caixa, maquininhas e banco direto"}
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-            rec_caixa, rec_infinity, rec_banco, rec_transfer, rec_suspeitas = st.columns(5)
+            valor_caixa_detalhes = recebimentos_caixa_belle_periodo
             valor_maquininhas_detalhes = (
                 recebimentos_infinity_extrato_periodo
                 if recebimentos_infinity_extrato_periodo > 0
                 else recebimentos_infinity_sistema_periodo
             )
-            valor_suspeitas_detalhes = somar_recebido_belle(
-                df_vendas_suspeitas_infinity_periodo
+            valor_banco_direto_detalhes = conciliacao_banco_detalhes["total"]
+            if usar_conta_corrente_clinicorp and not df_recebimentos_conta_corrente_periodo.empty:
+                conta_corrente_rec = df_recebimentos_conta_corrente_periodo.copy()
+                texto_conta_corrente = (
+                    conta_corrente_rec.get("memo", pd.Series("", index=conta_corrente_rec.index)).fillna("").map(normalizar_texto)
+                    + " "
+                    + conta_corrente_rec.get("nome", pd.Series("", index=conta_corrente_rec.index)).fillna("").map(normalizar_texto)
+                    + " "
+                    + conta_corrente_rec.get("tipo_lancamento", pd.Series("", index=conta_corrente_rec.index)).fillna("").map(normalizar_texto)
+                    + " "
+                    + conta_corrente_rec.get("tipo_transacao", pd.Series("", index=conta_corrente_rec.index)).fillna("").map(normalizar_texto)
+                )
+                valores_conta_corrente = pd.to_numeric(
+                    conta_corrente_rec.get("valor", 0),
+                    errors="coerce",
+                ).fillna(0)
+                mascara_caixa_cc = texto_conta_corrente.str.contains(
+                    r"\bcaixa\b|dinheiro|especie|espécie",
+                    regex=True,
+                )
+                mascara_maquininha_cc = texto_conta_corrente.str.contains(
+                    r"cartao|cartão|credito|crédito|debito|débito|visa|master|elo|rede",
+                    regex=True,
+                )
+                valor_caixa_detalhes = float(valores_conta_corrente[mascara_caixa_cc].sum())
+                valor_maquininhas_detalhes = float(valores_conta_corrente[mascara_maquininha_cc].sum())
+                valor_banco_direto_detalhes = float(
+                    valores_conta_corrente[
+                        ~(mascara_caixa_cc | mascara_maquininha_cc)
+                    ].sum()
+                )
+            valor_clinicorp_detalhes = (
+                max(
+                    total_recebimentos_detalhes
+                    - valor_caixa_detalhes
+                    - valor_maquininhas_detalhes
+                    - valor_banco_direto_detalhes,
+                    0.0,
+                )
+                if usar_conta_corrente_clinicorp else 0.0
             )
             cards_recebimentos = [
                 (
-                    rec_caixa,
                     rotulo_caixa_recebimentos,
-                    recebimentos_caixa_belle_periodo,
+                    valor_caixa_detalhes,
                     "green",
                     "Entradas em dinheiro/caixa",
                 ),
                 (
-                    rec_infinity,
                     "Maquininhas",
                     valor_maquininhas_detalhes,
                     "blue",
-                    "Extratos de cartão conciliados",
+                    "Cartões dentro da conta corrente" if usar_conta_corrente_clinicorp else "Extratos de cartão conciliados",
                 ),
                 (
-                    rec_banco,
                     "Banco direto",
-                    conciliacao_banco_detalhes["total"],
+                    valor_banco_direto_detalhes,
                     "green",
-                    "Créditos localizados no OFX",
-                ),
-                (
-                    rec_transfer,
-                    "Transferências retiradas",
-                    creditos_banco_infinity_periodo,
-                    "neutral",
-                    "Repasses já descontados",
-                ),
-                (
-                    rec_suspeitas,
-                    "Não identificadas",
-                    valor_suspeitas_detalhes,
-                    "purple",
-                    "Diferenças para auditoria",
+                    "Pix, boletos e entradas diretas" if usar_conta_corrente_clinicorp else "Créditos localizados no OFX",
                 ),
             ]
-            for coluna, titulo, valor, cor_card, rodape in cards_recebimentos:
-                valor_classe = "red" if titulo == "Transferências retiradas" else (
-                    "blue" if cor_card == "blue" else "green"
+            if usar_conta_corrente_clinicorp:
+                cards_recebimentos.append(
+                    (
+                        "Clinicorp",
+                        valor_clinicorp_detalhes,
+                        "purple",
+                        "Demais entradas na conta corrente",
+                    )
                 )
+            cards_recebimentos = [
+                card for card in cards_recebimentos
+                if float(card[1] or 0) > 0 or card[0] in {rotulo_caixa_recebimentos, "Banco direto"}
+            ]
+            cols_recebimentos = st.columns(min(4, max(1, len(cards_recebimentos))))
+            for idx_card, (titulo, valor, cor_card, rodape) in enumerate(cards_recebimentos):
+                valor_classe = "blue" if cor_card == "blue" else "green"
+                coluna = cols_recebimentos[idx_card % len(cols_recebimentos)]
                 with coluna:
                     st.markdown(
                         f"""
@@ -7535,9 +7981,13 @@ elif st.session_state.pagina == "detalhes":
                         """,
                         unsafe_allow_html=True,
                     )
-            df_banco_rec = conciliacao_banco_detalhes[
-                "creditos_conciliados"
-            ].copy()
+            df_banco_rec = (
+                df_recebimentos_conta_corrente_periodo.copy()
+                if usar_conta_corrente_clinicorp
+                else conciliacao_banco_detalhes["creditos_conciliados"].copy()
+            )
+            if usar_conta_corrente_clinicorp and not df_banco_rec.empty:
+                df_banco_rec["tipo_recebimento"] = "Conta corrente"
             if not df_rec.empty:
                 df_rec["forma_recebimento"] = df_rec.apply(
                     classificar_forma_recebimento,
@@ -7568,18 +8018,19 @@ elif st.session_state.pagina == "detalhes":
             total_filtrado_receb = len(df_rec) + len(df_banco_rec)
             st.markdown(f'<div style="text-align:right;font-size:0.78rem;color:#4A4A7A;margin-bottom:0.5rem">{total_filtrado_receb} registro(s)</div>', unsafe_allow_html=True)
             rows = ""
-            for _, row in df_rec.sort_values(
-                "data", ascending=False, na_position="last"
-            ).iterrows():
-                data_str = row["data"].strftime("%d/%m/%y") if pd.notna(row["data"]) else "—"
-                memo = texto_html(row.get("descricao", ""), 70)
-                conta = tag_categoria(row.get("conta_destino", ""))
-                forma = tag_categoria(row.get("forma_recebimento", "Outros"))
-                valor_recebido = row.get("valor_recebido", row["valor"])
-                if pd.isna(valor_recebido):
-                    valor_recebido = row["valor"]
-                rows += f"<tr><td>{data_str}</td><td>{memo}</td><td>{forma}</td><td>{conta}</td><td class='valor-pos'>{fmt_brl(valor_recebido)}</td></tr>"
-            st.markdown(f'<table class="fin-table"><thead><tr><th>Data</th><th>Descrição</th><th>Forma</th><th>Conta</th><th>Valor</th></tr></thead><tbody>{rows}</tbody></table>', unsafe_allow_html=True)
+            if not df_rec.empty and "data" in df_rec.columns:
+                for _, row in df_rec.sort_values(
+                    "data", ascending=False, na_position="last"
+                ).iterrows():
+                    data_str = row["data"].strftime("%d/%m/%y") if pd.notna(row["data"]) else "—"
+                    memo = texto_html(row.get("descricao", ""), 70)
+                    conta = tag_categoria(row.get("conta_destino", ""))
+                    forma = tag_categoria(row.get("forma_recebimento", "Outros"))
+                    valor_recebido = row.get("valor_recebido", row["valor"])
+                    if pd.isna(valor_recebido):
+                        valor_recebido = row["valor"]
+                    rows += f"<tr><td>{data_str}</td><td>{memo}</td><td>{forma}</td><td>{conta}</td><td class='valor-pos'>{fmt_brl(valor_recebido)}</td></tr>"
+                st.markdown(f'<table class="fin-table"><thead><tr><th>Data</th><th>Descrição</th><th>Forma</th><th>Conta</th><th>Valor</th></tr></thead><tbody>{rows}</tbody></table>', unsafe_allow_html=True)
             if not df_banco_rec.empty:
                 rows = ""
                 for _, row in df_banco_rec.iterrows():
@@ -7606,17 +8057,23 @@ elif st.session_state.pagina == "detalhes":
                 df_clinipay_base_periodo,
                 df_fluxo_base_periodo,
             )
-            df_rec = conciliacao_detalhes["creditos_conciliados"].copy()
+            df_rec = (
+                df_recebimentos_conta_corrente_periodo.copy()
+                if usar_conta_corrente_clinicorp
+                else conciliacao_detalhes["creditos_conciliados"].copy()
+            )
+            if usar_conta_corrente_clinicorp and not df_rec.empty:
+                df_rec["tipo_recebimento"] = "Conta corrente"
             if df_rec.empty:
                 st.info("Nenhum recebimento conciliado com as vendas aprovadas.")
             else:
                 st.markdown(
                     f"""
                     <div class="kpi-card green" style="margin-bottom:1rem">
-                        <div class="kpi-label">Recebimentos conciliados</div>
-                        <div class="kpi-value">{fmt_brl(conciliacao_detalhes["total"])}</div>
+                        <div class="kpi-label">{"Recebimentos da conta corrente" if usar_conta_corrente_clinicorp else "Recebimentos conciliados"}</div>
+                        <div class="kpi-value">{fmt_brl(recebimentos_conta_corrente_periodo if usar_conta_corrente_clinicorp else conciliacao_detalhes["total"])}</div>
                         <div class="kpi-footer">
-                            Recebimentos identificados das vendas aprovadas
+                            {"Fonte oficial do Clinicorp" if usar_conta_corrente_clinicorp else "Recebimentos identificados das vendas aprovadas"}
                         </div>
                     </div>
                     """,
@@ -7710,8 +8167,182 @@ elif st.session_state.pagina == "detalhes":
                 """,
                 unsafe_allow_html=True,
             )
+            if (
+                "servico_vendido" in base_recebimentos_belle.columns
+                and normalizar_texto(fonte_vendas_ativa)
+                in {"orcamentos do clinicorp", "vendas do conta azul"}
+            ):
+                fonte_vendas_norm = normalizar_texto(fonte_vendas_ativa)
+                vendas_por_servico = base_recebimentos_belle.copy()
+                vendas_por_servico["servico_vendido"] = (
+                    vendas_por_servico["servico_vendido"]
+                    .fillna("")
+                    .astype(str)
+                    .str.strip()
+                    .replace("", "Serviço não identificado")
+                )
+                tipo_item_servico = vendas_por_servico.get(
+                    "tipo_item_vendido",
+                    pd.Series("", index=vendas_por_servico.index),
+                ).fillna("").astype(str)
+                if fonte_vendas_norm == "vendas do conta azul":
+                    vendas_por_servico["servico_vendido"] = [
+                        agrupar_servico_vendido(servico, tipo_item)
+                        for servico, tipo_item in zip(
+                            vendas_por_servico["servico_vendido"],
+                            tipo_item_servico,
+                        )
+                    ]
+                else:
+                    vendas_por_servico["servico_vendido"] = (
+                        vendas_por_servico["servico_vendido"]
+                        .apply(agrupar_procedimento_clinicorp)
+                    )
+                coluna_valor_servico = (
+                    "valor_liquido"
+                    if "valor_liquido" in vendas_por_servico.columns
+                    else "valor"
+                )
+                vendas_por_servico["valor_card_servico"] = pd.to_numeric(
+                    vendas_por_servico[coluna_valor_servico],
+                    errors="coerce",
+                ).fillna(0).abs()
+                resumo_servicos = (
+                    vendas_por_servico.groupby("servico_vendido", as_index=False)
+                    .agg(
+                        valor=("valor_card_servico", "sum"),
+                        quantidade=("valor_card_servico", "count"),
+                    )
+                    .sort_values("valor", ascending=False)
+                )
+                if not resumo_servicos.empty:
+                    st.markdown(
+                        """
+                        <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.07em;
+                                    color:#4A4A7A;text-transform:uppercase;margin:0.3rem 0 0.8rem">
+                            Serviços vendidos
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    if fonte_vendas_norm == "vendas do conta azul":
+                        categorias_servico = [
+                            "PRODUTO",
+                            "CONSULTA",
+                            "IMPLANTES",
+                            "INJETÁVEIS",
+                            "PROGRAMA",
+                            "TIRZEPATIDA",
+                        ]
+                        servicos_por_nome = {
+                            str(row["servico_vendido"]): row
+                            for _, row in resumo_servicos.iterrows()
+                        }
+                        cards_servicos = []
+                        for categoria_servico in categorias_servico:
+                            linha_servico = servicos_por_nome.get(categoria_servico)
+                            cards_servicos.append({
+                                "servico_vendido": categoria_servico,
+                                "valor": (
+                                    float(linha_servico["valor"])
+                                    if linha_servico is not None else 0.0
+                                ),
+                                "quantidade": (
+                                    int(linha_servico["quantidade"])
+                                    if linha_servico is not None else 0
+                                ),
+                            })
+                        cards_servicos.append({
+                            "servico_vendido": "TOTAL VENDAS",
+                            "valor": float(resumo_servicos["valor"].sum()),
+                            "quantidade": int(resumo_servicos["quantidade"].sum()),
+                        })
+                    else:
+                        cards_servicos = resumo_servicos.to_dict("records")
+                    for inicio_servicos in range(0, len(cards_servicos), 4):
+                        cols_servicos = st.columns(4)
+                        for col_servico, servico in zip(
+                            cols_servicos,
+                            cards_servicos[inicio_servicos:inicio_servicos + 4],
+                        ):
+                            participacao = (
+                                float(servico["valor"]) / vendas_detalhes * 100
+                                if vendas_detalhes > 0 else 0.0
+                            )
+                            with col_servico:
+                                st.markdown(
+                                    f"""
+                                    <div class="kpi-card blue" style="margin-bottom:1rem">
+                                        <div class="kpi-label">{texto_html(servico["servico_vendido"], 52)}</div>
+                                        <div class="kpi-value blue">{fmt_brl(float(servico["valor"]))}</div>
+                                        <div class="kpi-footer">
+                                            {int(servico["quantidade"])} venda(s) · {participacao:.1f}% do total
+                                        </div>
+                                    </div>
+                                    """,
+                                    unsafe_allow_html=True,
+                                )
+            vendas_tabela = base_recebimentos_belle.copy()
+            if (
+                "servico_vendido" in vendas_tabela.columns
+                and normalizar_texto(fonte_vendas_ativa)
+                in {"orcamentos do clinicorp", "vendas do conta azul"}
+            ):
+                fonte_vendas_norm = normalizar_texto(fonte_vendas_ativa)
+                servicos_tabela = (
+                    vendas_tabela["servico_vendido"]
+                    .fillna("")
+                    .astype(str)
+                    .str.strip()
+                )
+                tipos_tabela = vendas_tabela.get(
+                    "tipo_item_vendido",
+                    pd.Series("", index=vendas_tabela.index),
+                ).fillna("").astype(str)
+                if fonte_vendas_norm == "vendas do conta azul":
+                    vendas_tabela["tipo_servico_card"] = [
+                        agrupar_servico_vendido(servico, tipo_item)
+                        for servico, tipo_item in zip(servicos_tabela, tipos_tabela)
+                    ]
+                    opcoes_tipo_servico = [
+                        "Todos",
+                        "PRODUTO",
+                        "CONSULTA",
+                        "IMPLANTES",
+                        "INJETÁVEIS",
+                        "PROGRAMA",
+                        "TIRZEPATIDA",
+                        "Outros",
+                    ]
+                else:
+                    vendas_tabela["tipo_servico_card"] = (
+                        servicos_tabela.apply(agrupar_procedimento_clinicorp)
+                    )
+                    opcoes_tipo_servico = [
+                        "Todos",
+                        *sorted(
+                            vendas_tabela["tipo_servico_card"]
+                            .dropna()
+                            .astype(str)
+                            .unique()
+                            .tolist()
+                        ),
+                    ]
+                filtro_tipo_servico = st.selectbox(
+                    "Tipo de serviço",
+                    opcoes_tipo_servico,
+                    key="filtro_tipo_servico_vendas",
+                )
+                if filtro_tipo_servico != "Todos":
+                    vendas_tabela = vendas_tabela[
+                        vendas_tabela["tipo_servico_card"] == filtro_tipo_servico
+                    ].copy()
+                st.markdown(
+                    f'<div style="text-align:right;font-size:0.78rem;color:#4A4A7A;margin-bottom:0.5rem">{len(vendas_tabela)} venda(s)</div>',
+                    unsafe_allow_html=True,
+                )
             rows = ""
-            for _, row in base_recebimentos_belle.sort_values(
+            for _, row in vendas_tabela.sort_values(
                 "data", ascending=False, na_position="last"
             ).iterrows():
                 data_str = (
@@ -7872,7 +8503,7 @@ elif st.session_state.pagina == "detalhes":
                 100 - percentual_taxa_maquininha
                 if taxas_maquininha_view["bruto"] > 0 else 0.0
             )
-            c1, c2, c3, c4, c5 = st.columns(5)
+            c1, c2, c3, c4 = st.columns(4)
             delta_entradas_cls = (
                 "positive" if diferenca_entradas > 0
                 else "negative" if diferenca_entradas < 0
@@ -7886,11 +8517,11 @@ elif st.session_state.pagina == "detalhes":
             with c1:
                 st.markdown(
                     f"""
-                    <div class="kpi-card green" style="margin-bottom:1rem">
-                        <div class="kpi-label">Entradas maquininhas</div>
-                        <div class="kpi-value green">{fmt_brl(recebimentos_infinity_extrato_periodo)}</div>
-                        <div class="kpi-footer">Total localizado no extrato</div>
-                    </div>
+                        <div class="kpi-card green" style="margin-bottom:1rem">
+                            <div class="kpi-label">Entradas maquininhas</div>
+                            <div class="kpi-value green">{fmt_brl(recebimentos_infinity_extrato_periodo)}</div>
+                            <div class="kpi-footer">Total do extrato importado</div>
+                        </div>
                     """,
                     unsafe_allow_html=True,
                 )
@@ -7898,8 +8529,9 @@ elif st.session_state.pagina == "detalhes":
                 st.markdown(
                     f"""
                         <div class="kpi-card blue" style="margin-bottom:1rem">
-                            <div class="kpi-label">Maquininhas no sistema</div>
+                            <div class="kpi-label">Extrato filtrado</div>
                             <div class="kpi-value blue">{fmt_brl(recebimentos_maquininha_view)}</div>
+                            <div class="kpi-footer">Recorte atual dos filtros</div>
                             <div class="machine-delta {delta_entradas_cls}">{fmt_brl(diferenca_entradas, sinal=True)}</div>
                         </div>
                     """,
@@ -7927,18 +8559,6 @@ elif st.session_state.pagina == "detalhes":
                     """,
                     unsafe_allow_html=True,
                 )
-            with c5:
-                st.markdown(
-                    f"""
-                    <div class="kpi-card purple" style="margin-bottom:1rem">
-                        <div class="kpi-label">Banco/OFX compatível</div>
-                        <div class="kpi-value green">{fmt_brl(creditos_banco_infinity_periodo)}</div>
-                        <div class="machine-delta {delta_saidas_cls}">{fmt_brl(diferenca_saidas, sinal=True)}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
             resumo_operadoras = []
             for operadora, grupo in df_maquininhas_view.groupby(
                 df_maquininhas_view["maquininha_operadora"].fillna("Maquininha")
