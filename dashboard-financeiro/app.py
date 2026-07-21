@@ -374,6 +374,67 @@ st.markdown(
     [data-testid="stDialog"] {
         background: #0f1120 !important;
     }
+    [data-testid="stDialog"] > div,
+    div[role="dialog"],
+    div[role="dialog"] > div {
+        color: #e7e9f3 !important;
+        background: #0f1120 !important;
+    }
+    div[role="dialog"] label,
+    div[role="dialog"] p,
+    div[role="dialog"] span,
+    div[role="dialog"] small,
+    div[role="dialog"] div {
+        color: #cfd1df !important;
+    }
+    div[role="dialog"] input,
+    div[role="dialog"] textarea,
+    div[role="dialog"] [data-baseweb="select"] > div,
+    div[role="dialog"] [data-baseweb="base-input"],
+    div[role="dialog"] [data-baseweb="input"] {
+        color: #f3f5ff !important;
+        background: #111326 !important;
+        border-color: #2d3152 !important;
+    }
+    div[role="dialog"] [data-testid="stCodeBlock"],
+    div[role="dialog"] code,
+    div[role="dialog"] pre {
+        color: #f3f5ff !important;
+        background: #111326 !important;
+        border-color: #272744 !important;
+    }
+    div[role="dialog"] [data-testid="stAlert"] {
+        color: #d8c57b !important;
+        background: #2a2715 !important;
+        border-color: #5d5020 !important;
+    }
+    div[data-testid="stDateInput"] input,
+    div[data-testid="stTextInput"] input,
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stTextArea"] textarea,
+    div[data-testid="stSelectbox"] [data-baseweb="select"] > div {
+        color: #f3f5ff !important;
+        background: #111326 !important;
+        border-color: #2d3152 !important;
+    }
+    div[data-testid="stDateInput"] label,
+    div[data-testid="stTextInput"] label,
+    div[data-testid="stNumberInput"] label,
+    div[data-testid="stSelectbox"] label {
+        color: #cfd1df !important;
+    }
+    div[data-testid="stDataFrame"],
+    div[data-testid="stTable"] {
+        color: #cfd1df !important;
+        background-color: #10121f !important;
+    }
+    div[data-testid="stTable"] table,
+    div[data-testid="stTable"] th,
+    div[data-testid="stTable"] td {
+        color: #cfd1df !important;
+        background-color: #10121f !important;
+        border-color: #272744 !important;
+    }
     [data-testid="stChatMessage"] {
         background: #111326;
         border: 1px solid #252844;
@@ -430,6 +491,49 @@ def texto_html(valor, limite: Optional[int] = None) -> str:
     if limite is not None:
         texto = texto[:limite]
     return html.escape(texto)
+
+
+def nome_fornecedor_comparativo(valor) -> str:
+    texto = "" if pd.isna(valor) else str(valor).strip()
+    texto = re.sub(
+        r"^\s*pagamento\s+de\s+conta\s*:?\s*",
+        "",
+        texto,
+        flags=re.IGNORECASE,
+    )
+    texto_norm = normalizar_texto(texto).upper()
+    texto_norm = re.sub(r"[^A-Z0-9 ]+", " ", texto_norm)
+    texto_norm = re.sub(
+        r"\b(COMERCIO|REPRESENTACAO|REPRESENTACOES|COMERCIAL|LTDA|LTD|LT|"
+        r"ME|EPP|EIRELI|S A|SA)\b",
+        " ",
+        texto_norm,
+    )
+    texto_norm = re.sub(r"\s+", " ", texto_norm).strip()
+    return texto_norm or texto.upper() or "FORNECEDOR NAO IDENTIFICADO"
+
+
+def unificar_fornecedores_por_nome_base(nomes: pd.Series) -> pd.Series:
+    if nomes is None or nomes.empty:
+        return pd.Series(dtype="object")
+    nomes_limpos = nomes.fillna("").astype(str).map(nome_fornecedor_comparativo)
+    unicos = sorted(
+        {nome for nome in nomes_limpos.tolist() if nome},
+        key=lambda nome: (len(nome), nome),
+    )
+    mapa = {}
+    for nome in unicos:
+        nome_base = nome
+        for candidato in unicos:
+            if candidato == nome:
+                break
+            if len(candidato) < 4:
+                continue
+            if nome.startswith(candidato + " ") or nome == candidato:
+                nome_base = candidato
+                break
+        mapa[nome] = nome_base
+    return nomes_limpos.map(mapa).fillna(nomes_limpos)
 
 
 def parse_valor_br(v) -> Optional[float]:
@@ -497,6 +601,7 @@ def classificar_forma_recebimento(row) -> str:
         "maquininha" in texto or "infinite" in texto or "infinity" in texto
         or "rede" in texto or "redecard" in texto or "visa" in texto
         or "master" in texto or "cartao" in texto or "cartão" in texto
+        or "cart" in texto
     ):
         return "Maquininhas"
     if "banco" in texto or "sicoob" in texto or "sicredi" in texto:
@@ -780,6 +885,27 @@ def filtrar_fornecedores_producao(df: Optional[pd.DataFrame]) -> pd.DataFrame:
         return pd.DataFrame()
 
     base = df.copy()
+
+    def limpar_nome_fornecedor(valor) -> str:
+        texto_nome = "" if pd.isna(valor) else str(valor).strip()
+        texto_nome = re.sub(
+            r"^\s*pagamento\s+de\s+conta\s*:?\s*",
+            "",
+            texto_nome,
+            flags=re.IGNORECASE,
+        )
+        texto_nome = re.sub(r"\s+", " ", texto_nome).strip(" -:;")
+        if normalizar_texto(texto_nome) in {
+            "",
+            "-",
+            "nan",
+            "none",
+            "sem fornecedor",
+            "sem fornecedor identificado",
+        }:
+            return ""
+        return texto_nome
+
     fornecedores_catalogo = {
         "ADYEN LATIN AMERICA": ["adyen latin america"],
         "ALEXANDRE SANTANA / RETATRUTIDE": [
@@ -874,7 +1000,28 @@ def filtrar_fornecedores_producao(df: Optional[pd.DataFrame]) -> pd.DataFrame:
             (fornecedor_canonico == "") & mascara_alias,
             nome_padrao,
         )
+    fornecedor_original = (
+        base.get("fornecedor", pd.Series("", index=base.index))
+        .fillna("")
+        .astype(str)
+        .map(limpar_nome_fornecedor)
+    )
+    descricao_limpa = (
+        base.get("descricao", pd.Series("", index=base.index))
+        .fillna("")
+        .astype(str)
+        .map(limpar_nome_fornecedor)
+    )
+    categoria_norm = base.get(
+        "categoria",
+        pd.Series("", index=base.index),
+    ).fillna("").map(normalizar_texto)
     fornecedor_listado = fornecedor_canonico != ""
+    fornecedor_informado = fornecedor_original != ""
+    fornecedor_por_despesa_operacional = (
+        categoria_norm.str.contains(r"despesas?\s+operacionais?", regex=True)
+        & (descricao_limpa != "")
+    )
     fora_producao = texto.str.contains(
         r"simples\s+nacional|imposto|tributo|salario|salarios|ordenado|"
         r"repasse\s+medico|pro[\s-]*labore|retirada|ajuste\s+de\s+caixa|"
@@ -885,9 +1032,14 @@ def filtrar_fornecedores_producao(df: Optional[pd.DataFrame]) -> pd.DataFrame:
     )
     base["fornecedor"] = fornecedor_canonico.where(
         fornecedor_canonico != "",
-        base.get("fornecedor", pd.Series("", index=base.index)),
+        fornecedor_original.where(fornecedor_original != "", descricao_limpa),
     )
-    return base[fornecedor_listado & ~fora_producao].copy()
+    fornecedor_valido = (
+        fornecedor_listado
+        | fornecedor_informado
+        | fornecedor_por_despesa_operacional
+    )
+    return base[fornecedor_valido & ~fora_producao].copy()
 
 
 def filtrar_por_periodo(
@@ -1353,6 +1505,22 @@ def conciliar_recebimentos(
         ignore_index=True,
         sort=False,
     )
+    for coluna_padrao, valor_padrao in {
+        "data": pd.NaT,
+        "valor": 0.0,
+        "memo": "",
+        "tipo_recebimento": "",
+    }.items():
+        if coluna_padrao not in creditos_identificados.columns:
+            creditos_identificados[coluna_padrao] = valor_padrao
+    creditos_identificados["data"] = pd.to_datetime(
+        creditos_identificados["data"],
+        errors="coerce",
+    )
+    creditos_identificados["valor"] = pd.to_numeric(
+        creditos_identificados["valor"],
+        errors="coerce",
+    ).fillna(0.0)
     creditos_identificados = creditos_identificados.sort_values(
         "data", na_position="last"
     )
@@ -2459,6 +2627,9 @@ def processar_excel(uploaded_file) -> pd.DataFrame:
         col_categoria = localizar(
             "categoria", "conta destino", "plano de contas", "conta"
         )
+        col_fornecedor = localizar(
+            "fornecedor", "favorecido", "nome fornecedor", "nome do fornecedor"
+        )
         col_descricao = localizar(
             "descrição", "descricao", "fornecedor", "favorecido"
         )
@@ -2500,6 +2671,10 @@ def processar_excel(uploaded_file) -> pd.DataFrame:
         df["descricao"] = (
             df[col_descricao].fillna("").astype(str).str.strip()
             if col_descricao else ""
+        )
+        df["fornecedor"] = (
+            df[col_fornecedor].fillna("").astype(str).str.strip()
+            if col_fornecedor else ""
         )
         df.loc[df["descricao"] == "", "descricao"] = df["categoria"]
         df["forma"] = (
@@ -4865,6 +5040,10 @@ def criar_payload_compartilhado(user_id: int) -> str:
         "contas": [list(conta) for conta in contas],
         "periodo_inicio": str(st.session_state.periodo_inicio_global),
         "periodo_fim": str(st.session_state.periodo_fim_global),
+        "cliente_compartilhado": st.session_state.get(
+            "cliente_compartilhado",
+            "",
+        ),
     }
     return json.dumps(payload, ensure_ascii=False)
 
@@ -4911,6 +5090,7 @@ def carregar_payload_compartilhado(payload_json: str) -> None:
         payload.get("df_conta_azul_pagar")
     )
     st.session_state.share_accounts = payload.get("contas", [])
+    st.session_state.share_client = payload.get("cliente_compartilhado", "")
     if payload.get("periodo_inicio"):
         st.session_state.periodo_inicio_global = date.fromisoformat(
             payload["periodo_inicio"]
@@ -5018,6 +5198,10 @@ if "share_token" not in st.session_state:
     st.session_state.share_token = None
 if "share_title" not in st.session_state:
     st.session_state.share_title = ""
+if "share_client" not in st.session_state:
+    st.session_state.share_client = ""
+if "cliente_compartilhado" not in st.session_state:
+    st.session_state.cliente_compartilhado = ""
 if "share_accounts" not in st.session_state:
     st.session_state.share_accounts = []
 if "mostrar_compartilhamento" not in st.session_state:
@@ -5109,6 +5293,15 @@ def abrir_compartilhamento():
         "Crie uma cópia somente leitura dos dados atuais. O cliente não poderá "
         "importar arquivos, editar contas nem acessar a administração."
     )
+    cliente_link = st.selectbox(
+        "Cliente do link",
+        CLIENTES_RELATORIO,
+        index=(
+            CLIENTES_RELATORIO.index(st.session_state.cliente_compartilhado)
+            if st.session_state.cliente_compartilhado in CLIENTES_RELATORIO
+            else 0
+        ),
+    )
     titulo = st.text_input(
         "Nome do relatório",
         value=f"Relatório financeiro — {current_month}",
@@ -5142,6 +5335,7 @@ def abrir_compartilhamento():
         if not titulo.strip() or not base_url.strip():
             st.error("Informe o nome do relatório e o endereço público do app.")
         else:
+            st.session_state.cliente_compartilhado = cliente_link
             dias = {
                 "7 dias": 7,
                 "30 dias": 30,
@@ -5983,6 +6177,31 @@ def filtrar_vendas_validas(df: Optional[pd.DataFrame]) -> pd.DataFrame:
 
 
 df_orcamentos_periodo = filtrar_vendas_validas(df_orcamentos_periodo)
+coluna_recebimento_amigotech = (
+    "valor_recebido"
+    if (
+        eh_amigotech_ativo
+        and not df_orcamentos_periodo.empty
+        and "valor_recebido" in df_orcamentos_periodo.columns
+    )
+    else "valor"
+)
+recebimentos_amigotech_periodo = (
+    float(
+        pd.to_numeric(
+            df_orcamentos_periodo[coluna_recebimento_amigotech],
+            errors="coerce",
+        ).fillna(0).sum()
+    )
+    if eh_amigotech_ativo
+    and not df_orcamentos_periodo.empty
+    and coluna_recebimento_amigotech in df_orcamentos_periodo.columns
+    else 0.0
+)
+usar_recebimentos_amigotech = (
+    eh_amigotech_ativo
+    and recebimentos_amigotech_periodo > 0
+)
 
 
 def valor_coluna_gerencial(df: pd.DataFrame, coluna: str) -> float:
@@ -6685,6 +6904,8 @@ conciliacao_geral = conciliar_recebimentos(
 recebimentos = (
     recebimentos_conta_azul_periodo
     if usar_recebimentos_conta_azul
+    else recebimentos_amigotech_periodo
+    if usar_recebimentos_amigotech
     else recebimentos_conta_corrente_periodo
     if usar_conta_corrente_clinicorp
     else recebimentos_oficiais_belle_periodo
@@ -6734,6 +6955,84 @@ def criar_resumo_periodo() -> Dict[str, float]:
         recebimentos - despesas_periodo - saidas_lucro_periodo
     )
     resultado_final_periodo = resultado_operacional_periodo
+    resumo_servicos_salvo = []
+    if (
+        not base_recebimentos_belle.empty
+        and "servico_vendido" in base_recebimentos_belle.columns
+        and normalizar_texto(fonte_vendas_ativa)
+        in {"orcamentos do clinicorp", "vendas do conta azul"}
+    ):
+        vendas_por_servico_salvar = base_recebimentos_belle.copy()
+        vendas_por_servico_salvar["servico_vendido"] = (
+            vendas_por_servico_salvar["servico_vendido"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .replace("", "Serviço não identificado")
+        )
+        tipo_item_servico_salvar = vendas_por_servico_salvar.get(
+            "tipo_item_vendido",
+            pd.Series("", index=vendas_por_servico_salvar.index),
+        ).fillna("").astype(str)
+        if normalizar_texto(fonte_vendas_ativa) == "vendas do conta azul":
+            vendas_por_servico_salvar["servico_vendido"] = [
+                agrupar_servico_vendido(servico, tipo_item)
+                for servico, tipo_item in zip(
+                    vendas_por_servico_salvar["servico_vendido"],
+                    tipo_item_servico_salvar,
+                )
+            ]
+        else:
+            vendas_por_servico_salvar["servico_vendido"] = (
+                vendas_por_servico_salvar["servico_vendido"]
+                .apply(agrupar_procedimento_clinicorp)
+            )
+        coluna_valor_servico_salvar = (
+            "valor_liquido"
+            if "valor_liquido" in vendas_por_servico_salvar.columns
+            else "valor"
+        )
+        vendas_por_servico_salvar["valor_card_servico"] = pd.to_numeric(
+            vendas_por_servico_salvar[coluna_valor_servico_salvar],
+            errors="coerce",
+        ).fillna(0).abs()
+        resumo_servicos_salvo = (
+            vendas_por_servico_salvar.groupby("servico_vendido", as_index=False)
+            .agg(
+                valor=("valor_card_servico", "sum"),
+                quantidade=("valor_card_servico", "count"),
+            )
+            .sort_values("valor", ascending=False)
+            .to_dict("records")
+        )
+
+    resumo_fornecedores_salvo = []
+    contas_fornecedores_salvar = filtrar_fornecedores_producao(
+        pagamentos_periodo_global["contas_conciliadas"]
+    )
+    if not contas_fornecedores_salvar.empty:
+        contas_fornecedores_salvar["fornecedor_comparativo"] = (
+            contas_fornecedores_salvar["fornecedor"]
+            .apply(nome_fornecedor_comparativo)
+        )
+        resumo_fornecedores_salvo = (
+            contas_fornecedores_salvar.groupby("fornecedor_comparativo", as_index=False)
+            .agg(
+                valor=("valor", "sum"),
+                lancamentos=("valor", "count"),
+            )
+            .rename(columns={"fornecedor_comparativo": "fornecedor"})
+            .sort_values("valor", ascending=False)
+            .to_dict("records")
+        )
+
+    resumo_despesas_salvo = [
+        {"grupo": "Custo Fixo", "valor": float(pagamentos_periodo_global["fixos"])},
+        {"grupo": "Custo Variável", "valor": float(pagamentos_periodo_global["variaveis"])},
+        {"grupo": "Pró-labore", "valor": float(pro_labore_periodo)},
+        {"grupo": "Retirada de Lucro", "valor": float(retiradas_periodo)},
+        {"grupo": "Antecipação de Lucro", "valor": float(antecipacoes_lucro_periodo)},
+    ]
     return {
         "recebimentos": float(recebimentos),
         "despesas": float(despesas_periodo),
@@ -6745,6 +7044,9 @@ def criar_resumo_periodo() -> Dict[str, float]:
         "vendas": float(vendas_referencia_periodo),
         "resultado_operacional": float(resultado_operacional_periodo),
         "resultado_final": float(resultado_final_periodo),
+        "vendas_por_servico": resumo_servicos_salvo,
+        "fornecedores": resumo_fornecedores_salvo,
+        "despesas_por_tipo": resumo_despesas_salvo,
     }
 
 
@@ -7046,6 +7348,8 @@ elif st.session_state.pagina == "visao":
     recebimentos_periodo = (
         recebimentos_conta_azul_periodo
         if usar_recebimentos_conta_azul
+        else recebimentos_amigotech_periodo
+        if usar_recebimentos_amigotech
         else recebimentos_conta_corrente_periodo
         if usar_conta_corrente_clinicorp
         else recebimentos_oficiais_belle_periodo
@@ -7458,9 +7762,9 @@ elif st.session_state.pagina == "fornecedores":
         despesas_fornecedor = filtrar_fornecedores_producao(despesas_fornecedor)
         if despesas_fornecedor.empty:
             st.info(
-                "Nenhum gasto de produção encontrado no período. Este painel "
-                "considera materiais e medicamentos, remédios, insumos clínicos, "
-                "exames, material médico e material odontológico."
+                "Nenhum fornecedor encontrado no período. Este painel usa a "
+                "coluna de fornecedor quando existir e, no Clinicorp, também "
+                "considera Despesa Operacional pela descrição."
             )
         else:
             if "fornecedor" in despesas_fornecedor.columns:
@@ -7750,20 +8054,24 @@ elif st.session_state.pagina == "relatorios":
 elif st.session_state.pagina == "comparativo":
     st.markdown('<div class="page-title">Comparativo</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="page-subtitle">Compare recebimentos, despesas, resultado e vendas entre relatórios salvos.</div>',
+        '<div class="page-subtitle">Acompanhe vendas, fornecedores, despesas, recebimentos e resultado mês a mês.</div>',
         unsafe_allow_html=True,
     )
     relatorios_salvos = list_saved_reports(user.id)
     linhas_comparativo = []
+    detalhes_vendas_comparativo = []
+    detalhes_fornecedores_comparativo = []
+    detalhes_despesas_comparativo = []
     for report_id, cliente, titulo, resumo_json, inicio, fim, criado_em in relatorios_salvos:
         resumo = resumo_do_json(resumo_json)
         if not resumo:
             continue
+        periodo_comparativo = resumo.get("mes_referencia") or fmt_periodo_salvo(inicio, fim)
         linhas_comparativo.append({
             "id": report_id,
             "cliente": cliente,
             "titulo": titulo,
-            "periodo": resumo.get("mes_referencia") or fmt_periodo_salvo(inicio, fim),
+            "periodo": periodo_comparativo,
             "inicio": pd.to_datetime(inicio, errors="coerce"),
             "fim": pd.to_datetime(fim, errors="coerce"),
             "recebimentos": resumo.get("recebimentos", 0.0),
@@ -7771,6 +8079,35 @@ elif st.session_state.pagina == "comparativo":
             "resultado": resumo.get("resultado_final", 0.0),
             "vendas": resumo.get("vendas", 0.0),
         })
+        for item in resumo.get("vendas_por_servico", []) or []:
+            detalhes_vendas_comparativo.append({
+                "cliente": cliente,
+                "periodo": periodo_comparativo,
+                "inicio": pd.to_datetime(inicio, errors="coerce"),
+                "servico": item.get("servico_vendido") or item.get("servico") or "Serviço não identificado",
+                "valor": float(item.get("valor", 0.0) or 0.0),
+                "quantidade": int(item.get("quantidade", 0) or 0),
+            })
+        for item in resumo.get("fornecedores", []) or []:
+            nome_fornecedor_item = (
+                item.get("fornecedor") or "Fornecedor não identificado"
+            )
+            detalhes_fornecedores_comparativo.append({
+                "cliente": cliente,
+                "periodo": periodo_comparativo,
+                "inicio": pd.to_datetime(inicio, errors="coerce"),
+                "fornecedor": nome_fornecedor_comparativo(nome_fornecedor_item),
+                "valor": float(item.get("valor", 0.0) or 0.0),
+                "lancamentos": int(item.get("lancamentos", 0) or 0),
+            })
+        for item in resumo.get("despesas_por_tipo", []) or []:
+            detalhes_despesas_comparativo.append({
+                "cliente": cliente,
+                "periodo": periodo_comparativo,
+                "inicio": pd.to_datetime(inicio, errors="coerce"),
+                "grupo": item.get("grupo") or "Despesa",
+                "valor": float(item.get("valor", 0.0) or 0.0),
+            })
     df_comparativo = pd.DataFrame(linhas_comparativo)
     if df_comparativo.empty:
         st.info("Salve ao menos um relatório para montar o comparativo.")
@@ -7779,7 +8116,19 @@ elif st.session_state.pagina == "comparativo":
         if not clientes:
             st.info("Nenhum cliente encontrado nos relatórios salvos.")
             st.stop()
-        cliente_comp = st.selectbox("Cliente", clientes)
+        if st.session_state.share_mode:
+            cliente_share = st.session_state.get("share_client", "")
+            cliente_comp = (
+                cliente_share
+                if cliente_share in clientes
+                else clientes[0]
+            )
+            st.markdown(
+                f"**Cliente:** {texto_html(cliente_comp)}",
+                unsafe_allow_html=True,
+            )
+        else:
+            cliente_comp = st.selectbox("Cliente", clientes)
         df_filtrado_comp = df_comparativo.copy()
         df_filtrado_comp = df_filtrado_comp[
             df_filtrado_comp["cliente"] == cliente_comp
@@ -7795,7 +8144,7 @@ elif st.session_state.pagina == "comparativo":
             c3.metric("Vendas", fmt_brl(df_filtrado_comp["vendas"].sum()))
             c4.metric("Resultado", fmt_brl(df_filtrado_comp["resultado"].sum(), sinal=True))
 
-            def grafico_comparativo(
+            def grafico_barra_mensal(
                 titulo: str,
                 coluna: str,
                 cor: str,
@@ -7841,10 +8190,350 @@ elif st.session_state.pagina == "comparativo":
                 )
                 return fig
 
-            linha_graf_1 = st.columns(2)
-            with linha_graf_1[0]:
+            def grafico_categorias_mensal(
+                df_base: pd.DataFrame,
+                categoria: str,
+                titulo: str,
+                cor: str,
+            ) -> Optional[go.Figure]:
+                if df_base.empty:
+                    return None
+                totais_categoria = (
+                    df_base.groupby(categoria, as_index=False)["valor"]
+                    .sum()
+                    .sort_values("valor", ascending=False)
+                )
+                categorias_top = totais_categoria.head(10)[categoria].tolist()
+                df_plot = df_base[df_base[categoria].isin(categorias_top)].copy()
+                if df_plot.empty:
+                    return None
+                fig = go.Figure()
+                for nome_categoria, grupo in df_plot.groupby(categoria):
+                    grupo = grupo.sort_values("inicio")
+                    fig.add_trace(
+                        go.Bar(
+                            x=grupo["periodo"],
+                            y=grupo["valor"],
+                            name=str(nome_categoria),
+                            text=[fmt_brl(v) for v in grupo["valor"]],
+                            textposition="auto",
+                        )
+                    )
+                fig.update_layout(
+                    title=dict(text=titulo, font=dict(color="#E2E8F0", size=15)),
+                    height=430,
+                    barmode="stack",
+                    margin=dict(l=0, r=0, t=42, b=0),
+                    paper_bgcolor="#11112A",
+                    plot_bgcolor="#11112A",
+                    legend=dict(font=dict(color="#CFD1DF")),
+                    xaxis=dict(showgrid=False, tickfont=dict(color="#A0A0C0")),
+                    yaxis=dict(showgrid=True, gridcolor="#1E1E3A", tickfont=dict(color="#4A4A7A")),
+                )
+                return fig
+
+            def grafico_linha_total(
+                df_base: pd.DataFrame,
+                titulo: str,
+                cor: str,
+            ) -> Optional[go.Figure]:
+                if df_base.empty:
+                    return None
+                df_total = (
+                    df_base.groupby(["periodo", "inicio"], as_index=False)["valor"]
+                    .sum()
+                    .sort_values("inicio")
+                )
+                if df_total.empty:
+                    return None
+                fig = go.Figure()
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_total["periodo"],
+                        y=df_total["valor"],
+                        mode="lines+markers+text",
+                        line=dict(color=cor, width=3),
+                        marker=dict(size=9, color=cor),
+                        text=[fmt_brl(v) for v in df_total["valor"]],
+                        textposition="top center",
+                    )
+                )
+                fig.update_layout(
+                    title=dict(text=titulo, font=dict(color="#E2E8F0", size=15)),
+                    height=300,
+                    margin=dict(l=0, r=0, t=42, b=0),
+                    paper_bgcolor="#11112A",
+                    plot_bgcolor="#11112A",
+                    showlegend=False,
+                    xaxis=dict(showgrid=False, tickfont=dict(color="#A0A0C0")),
+                    yaxis=dict(showgrid=True, gridcolor="#1E1E3A", tickfont=dict(color="#4A4A7A")),
+                )
+                return fig
+
+            def grafico_mapa_mensal(
+                df_base: pd.DataFrame,
+                categoria: str,
+                titulo: str,
+            ) -> Optional[go.Figure]:
+                if df_base.empty:
+                    return None
+                totais = (
+                    df_base.groupby(categoria, as_index=False)["valor"]
+                    .sum()
+                    .sort_values("valor", ascending=False)
+                )
+                categorias_top = totais.head(12)[categoria].tolist()
+                df_plot = df_base[df_base[categoria].isin(categorias_top)].copy()
+                if df_plot.empty:
+                    return None
+                matriz = (
+                    df_plot.pivot_table(
+                        index=categoria,
+                        columns="periodo",
+                        values="valor",
+                        aggfunc="sum",
+                        fill_value=0,
+                    )
+                    .reindex(categorias_top)
+                )
+                ordem_meses = (
+                    df_plot[["periodo", "inicio"]]
+                    .drop_duplicates()
+                    .sort_values("inicio")["periodo"]
+                    .tolist()
+                )
+                matriz = matriz.reindex(columns=ordem_meses, fill_value=0)
+                fig = go.Figure(
+                    go.Heatmap(
+                        z=matriz.values,
+                        x=matriz.columns,
+                        y=matriz.index,
+                        colorscale=[
+                            [0, "#11112A"],
+                            [0.35, "#273B69"],
+                            [0.7, "#3E8FE8"],
+                            [1, "#2FC792"],
+                        ],
+                        text=[
+                            [fmt_brl(valor) if valor else "" for valor in linha]
+                            for linha in matriz.values
+                        ],
+                        texttemplate="%{text}",
+                        hovertemplate="%{y}<br>%{x}<br>%{text}<extra></extra>",
+                        colorbar=dict(tickfont=dict(color="#A0A0C0")),
+                    )
+                )
+                fig.update_layout(
+                    title=dict(text=titulo, font=dict(color="#E2E8F0", size=15)),
+                    height=max(360, 38 * len(matriz.index) + 120),
+                    margin=dict(l=0, r=0, t=42, b=0),
+                    paper_bgcolor="#11112A",
+                    plot_bgcolor="#11112A",
+                    xaxis=dict(tickfont=dict(color="#A0A0C0")),
+                    yaxis=dict(tickfont=dict(color="#CFD1DF")),
+                )
+                return fig
+
+            df_vendas_servicos = pd.DataFrame(detalhes_vendas_comparativo)
+            if not df_vendas_servicos.empty:
+                df_vendas_servicos = df_vendas_servicos[
+                    df_vendas_servicos["cliente"] == cliente_comp
+                ].sort_values(["inicio", "servico"])
+                df_vendas_servicos = (
+                    df_vendas_servicos.groupby(
+                        ["cliente", "periodo", "inicio", "servico"],
+                        as_index=False,
+                    )
+                    .agg(
+                        valor=("valor", "sum"),
+                        quantidade=("quantidade", "sum"),
+                    )
+                    .sort_values(["inicio", "servico"])
+                )
+            df_fornecedores_comp = pd.DataFrame(detalhes_fornecedores_comparativo)
+            if not df_fornecedores_comp.empty:
+                df_fornecedores_comp = df_fornecedores_comp[
+                    df_fornecedores_comp["cliente"] == cliente_comp
+                ].sort_values(["inicio", "fornecedor"])
+                df_fornecedores_comp["fornecedor"] = (
+                    unificar_fornecedores_por_nome_base(
+                        df_fornecedores_comp["fornecedor"]
+                    )
+                )
+                df_fornecedores_comp = (
+                    df_fornecedores_comp.groupby(
+                        ["cliente", "periodo", "inicio", "fornecedor"],
+                        as_index=False,
+                    )
+                    .agg(
+                        valor=("valor", "sum"),
+                        lancamentos=("lancamentos", "sum"),
+                    )
+                    .sort_values(["inicio", "fornecedor"])
+                )
+            df_despesas_comp = pd.DataFrame(detalhes_despesas_comparativo)
+            if not df_despesas_comp.empty:
+                df_despesas_comp = df_despesas_comp[
+                    df_despesas_comp["cliente"] == cliente_comp
+                ].sort_values(["inicio", "grupo"])
+
+            tab_comp_vendas, tab_comp_fornecedores, tab_comp_despesas, tab_comp_receb, tab_comp_resultado = st.tabs([
+                "Comparativo de vendas",
+                "Fornecedores",
+                "Despesas",
+                "Recebimentos",
+                "Resultados",
+            ])
+
+            with tab_comp_vendas:
+                fig_vendas_total = grafico_linha_total(
+                    df_vendas_servicos,
+                    "Total vendido por mês",
+                    "#68A9ED",
+                )
+                if fig_vendas_total is None:
+                    st.info(
+                        "Os relatórios antigos não têm detalhamento de serviços salvo. "
+                        "Salve os próximos relatórios para alimentar este comparativo."
+                    )
+                    st.plotly_chart(
+                        grafico_barra_mensal("Total de vendas", "vendas", "#68A9ED"),
+                        use_container_width=True,
+                        config={"displayModeBar": False},
+                    )
+                else:
+                    st.plotly_chart(
+                        fig_vendas_total,
+                        use_container_width=True,
+                        config={"displayModeBar": False},
+                    )
+                    fig_vendas_mapa = grafico_mapa_mensal(
+                        df_vendas_servicos,
+                        "servico",
+                        "Principais serviços por mês",
+                    )
+                    if fig_vendas_mapa is not None:
+                        st.plotly_chart(
+                            fig_vendas_mapa,
+                            use_container_width=True,
+                            config={"displayModeBar": False},
+                        )
+                    meses_vendas = (
+                        df_vendas_servicos[["periodo", "inicio"]]
+                        .drop_duplicates()
+                        .sort_values("inicio")["periodo"]
+                        .tolist()
+                    )
+                    mes_vendas = st.selectbox(
+                        "Mês para ranking de serviços",
+                        meses_vendas,
+                        key="comparativo_mes_vendas_ranking",
+                    )
+                    ranking_vendas = (
+                        df_vendas_servicos[
+                            df_vendas_servicos["periodo"] == mes_vendas
+                        ]
+                        .sort_values("valor", ascending=False)
+                        .head(15)
+                    )
+                    st.dataframe(
+                        ranking_vendas.rename(
+                            columns={
+                                "periodo": "Período",
+                                "servico": "Serviço",
+                                "valor": "Valor",
+                                "quantidade": "Vendas",
+                            }
+                        )[["Serviço", "Valor", "Vendas"]],
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")},
+                    )
+
+            with tab_comp_fornecedores:
+                fig_fornecedores_total = grafico_linha_total(
+                    df_fornecedores_comp,
+                    "Total gasto com fornecedores por mês",
+                    "#F09595",
+                )
+                if fig_fornecedores_total is None:
+                    st.info(
+                        "Salve novos relatórios para comparar fornecedores por mês."
+                    )
+                else:
+                    st.plotly_chart(
+                        fig_fornecedores_total,
+                        use_container_width=True,
+                        config={"displayModeBar": False},
+                    )
+                    fig_fornecedores_mapa = grafico_mapa_mensal(
+                        df_fornecedores_comp,
+                        "fornecedor",
+                        "Principais fornecedores por mês",
+                    )
+                    if fig_fornecedores_mapa is not None:
+                        st.plotly_chart(
+                            fig_fornecedores_mapa,
+                            use_container_width=True,
+                            config={"displayModeBar": False},
+                        )
+                    meses_fornecedores = (
+                        df_fornecedores_comp[["periodo", "inicio"]]
+                        .drop_duplicates()
+                        .sort_values("inicio")["periodo"]
+                        .tolist()
+                    )
+                    mes_fornecedores = st.selectbox(
+                        "Mês para ranking de fornecedores",
+                        meses_fornecedores,
+                        key="comparativo_mes_fornecedores_ranking",
+                    )
+                    ranking_fornecedores = (
+                        df_fornecedores_comp[
+                            df_fornecedores_comp["periodo"] == mes_fornecedores
+                        ]
+                        .sort_values("valor", ascending=False)
+                        .head(15)
+                    )
+                    st.dataframe(
+                        ranking_fornecedores.rename(
+                            columns={
+                                "periodo": "Período",
+                                "fornecedor": "Fornecedor",
+                                "valor": "Valor",
+                                "lancamentos": "Lançamentos",
+                            }
+                        )[["Fornecedor", "Valor", "Lançamentos"]],
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={"Valor": st.column_config.NumberColumn(format="R$ %.2f")},
+                    )
+
+            with tab_comp_despesas:
+                if df_despesas_comp.empty:
+                    df_despesas_comp = pd.DataFrame([
+                        {
+                            "periodo": row["periodo"],
+                            "inicio": row["inicio"],
+                            "grupo": "Despesas",
+                            "valor": row["despesas"],
+                        }
+                        for _, row in df_filtrado_comp.iterrows()
+                    ])
                 st.plotly_chart(
-                    grafico_comparativo(
+                    grafico_categorias_mensal(
+                        df_despesas_comp,
+                        "grupo",
+                        "Despesas por tipo",
+                        "#F09595",
+                    ),
+                    use_container_width=True,
+                    config={"displayModeBar": False},
+                )
+
+            with tab_comp_receb:
+                st.plotly_chart(
+                    grafico_barra_mensal(
                         "Recebimentos",
                         "recebimentos",
                         "#2FC792",
@@ -7852,34 +8541,13 @@ elif st.session_state.pagina == "comparativo":
                     use_container_width=True,
                     config={"displayModeBar": False},
                 )
-            with linha_graf_1[1]:
+            with tab_comp_resultado:
                 st.plotly_chart(
-                    grafico_comparativo(
-                        "Despesas",
-                        "despesas",
-                        "#F09595",
-                    ),
-                    use_container_width=True,
-                    config={"displayModeBar": False},
-                )
-            linha_graf_2 = st.columns(2)
-            with linha_graf_2[0]:
-                st.plotly_chart(
-                    grafico_comparativo(
+                    grafico_barra_mensal(
                         "Resultado",
                         "resultado",
                         "#7167DC",
                         cores_por_valor=True,
-                    ),
-                    use_container_width=True,
-                    config={"displayModeBar": False},
-                )
-            with linha_graf_2[1]:
-                st.plotly_chart(
-                    grafico_comparativo(
-                        "Vendas",
-                        "vendas",
-                        "#68A9ED",
                     ),
                     use_container_width=True,
                     config={"displayModeBar": False},
@@ -8075,9 +8743,16 @@ elif st.session_state.pagina == "detalhes":
                     st.markdown(f'<table class="fin-table"><thead><tr><th>Vencimento</th><th>Fornecedor</th><th>Valor</th><th>Forma</th><th>Categoria</th></tr></thead><tbody>{rows}</tbody></table>', unsafe_allow_html=True)
 
     with tab_receb:
-        if usar_recebimentos_conta_azul:
-            df_rec = df_conta_azul_receber_periodo.copy()
-            if not df_creditos_diretos_conta_azul_periodo.empty:
+        if usar_recebimentos_conta_azul or usar_recebimentos_amigotech:
+            df_rec = (
+                df_conta_azul_receber_periodo.copy()
+                if usar_recebimentos_conta_azul
+                else df_orcamentos_periodo.copy()
+            )
+            if (
+                usar_recebimentos_conta_azul
+                and not df_creditos_diretos_conta_azul_periodo.empty
+            ):
                 df_diretos = df_creditos_diretos_conta_azul_periodo.copy()
                 df_diretos["descricao"] = df_diretos.get(
                     "memo",
@@ -8090,6 +8765,16 @@ elif st.session_state.pagina == "detalhes":
                     ignore_index=True,
                     sort=False,
                 )
+            coluna_valor_rec = (
+                "valor_recebido"
+                if usar_recebimentos_amigotech and "valor_recebido" in df_rec.columns
+                else "valor"
+            )
+            if coluna_valor_rec in df_rec.columns:
+                df_rec["valor"] = pd.to_numeric(
+                    df_rec[coluna_valor_rec],
+                    errors="coerce",
+                ).fillna(0.0)
 
             if not df_rec.empty:
                 df_rec["forma_recebimento"] = df_rec.apply(
@@ -8125,9 +8810,9 @@ elif st.session_state.pagina == "detalhes":
                 f"""
                 <div class="kpi-card green" style="margin-bottom:1rem">
                     <div class="kpi-label">Recebimentos</div>
-                    <div class="kpi-value">{fmt_brl(recebimentos_conta_azul_periodo)}</div>
+                    <div class="kpi-value">{fmt_brl(recebimentos_conta_azul_periodo if usar_recebimentos_conta_azul else recebimentos_amigotech_periodo)}</div>
                     <div class="kpi-footer">
-                        Fonte oficial: Contas a receber do Conta Azul
+                        Fonte oficial: {"Contas a receber do Conta Azul" if usar_recebimentos_conta_azul else "Recebidos do Amigotech"}
                     </div>
                 </div>
                 """,
@@ -8136,7 +8821,7 @@ elif st.session_state.pagina == "detalhes":
             rec_caixa, rec_maquininha, rec_banco, rec_outros = st.columns(4)
             cards_recebimentos = [
                 (rec_caixa, "Caixa", total_caixa, "green", "Entradas em dinheiro/caixa"),
-                (rec_maquininha, "Maquininhas", total_maquininhas, "blue", "Cartões identificados no Conta Azul"),
+                (rec_maquininha, "Maquininhas", total_maquininhas, "blue", "Cartões identificados"),
                 (rec_banco, "Banco direto", total_banco, "green", "PIX, boleto e créditos bancários"),
                 (rec_outros, "Outros", total_outros, "purple", "Formas não classificadas"),
             ]
