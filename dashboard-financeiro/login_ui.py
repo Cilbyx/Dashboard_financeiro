@@ -282,7 +282,7 @@ def render_login(User, login_user, reset_password_with_code, logger):
     )
 
     hour = datetime.now().hour
-    greeting = "Bom dia!" if hour < 12 else "Boa tarde!" if hour < 18 else "Boa noite!"
+    greeting = "Olá!"
     login_column, showcase_column = st.columns([42, 58], gap=None)
 
     with login_column:
