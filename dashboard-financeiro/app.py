@@ -24,7 +24,8 @@ from database import (
     add_conta, get_contas, create_shared_report,
     get_shared_report, list_shared_reports, revoke_shared_report,
     verify_admin_password, create_password_reset_code, reset_password_with_code,
-    bootstrap_admin_from_env
+    bootstrap_admin_from_env, seed_default_clients, create_client, get_clients,
+    update_client, set_client_active, count_saved_reports_by_client, delete_client
 )
 
 # =========================
@@ -168,7 +169,7 @@ delete_saved_report = getattr(
 # =========================
 # CLIENTES
 # =========================
-CLIENTES_RELATORIO = [
+DEFAULT_CLIENTES_RELATORIO = [
     "Luciana Matoso",
     "Andressa Manfroi",
     "Francini Pereira",
@@ -188,6 +189,42 @@ CLIENTES_RELATORIO = [
     "Patricia Leite",
     "Rafaela Riso",
 ]
+
+MAQUININHAS_CONHECIDAS = [
+    "Rede Service",
+    "Stone",
+    "InfinitePay",
+    "Getnet",
+    "Sipag",
+    "Cielo",
+    "Adyen",
+    "Clinipay",
+    "Saúde Service",
+    "PagSeguro",
+    "Mercado Pago",
+]
+
+BANCOS_CONHECIDOS = [
+    "Itaú",
+    "Sicoob",
+    "Sicredi",
+    "Santander",
+    "Bradesco",
+    "Banco do Brasil",
+    "Caixa",
+    "Inter",
+    "Nubank",
+    "BTG Pactual",
+]
+
+
+def clientes_relatorio_ativos() -> List[str]:
+    try:
+        clientes = [cliente[1] for cliente in get_clients()]
+    except Exception:
+        logger.exception("Falha ao listar clientes cadastrados")
+        clientes = []
+    return clientes or DEFAULT_CLIENTES_RELATORIO.copy()
 
 MESES_RELATORIO = [
     ("01", "Janeiro"),
@@ -227,6 +264,7 @@ st.set_page_config(
 )
 
 criar_tabelas()
+seed_default_clients(DEFAULT_CLIENTES_RELATORIO)
 bootstrap_admin_from_env()
 
 # =========================
@@ -267,6 +305,53 @@ st.markdown(
     .block-container {
         max-width: 1680px !important;
         padding: 4.25rem clamp(28px, 4vw, 72px) 3rem !important;
+    }
+    [data-testid="stAppViewContainer"],
+    [data-testid="stHeader"],
+    [data-testid="stToolbar"],
+    header[data-testid="stHeader"] {
+        color: #f3f5ff !important;
+        background: #0d0d1a !important;
+    }
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] > div,
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+        color: #e7e9f3 !important;
+        background: #10121d !important;
+    }
+    section[data-testid="stSidebar"] *,
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span {
+        color: #cfd1df !important;
+    }
+    section[data-testid="stSidebar"] button {
+        color: #e7e9f3 !important;
+        background: #15172a !important;
+        border: 1px solid #2d3152 !important;
+        box-shadow: none !important;
+    }
+    section[data-testid="stSidebar"] button:hover {
+        color: #ffffff !important;
+        background: #1a1d31 !important;
+        border-color: #3a3e63 !important;
+    }
+    section[data-testid="stSidebar"] input,
+    section[data-testid="stSidebar"] [data-baseweb="input"],
+    section[data-testid="stSidebar"] [data-baseweb="base-input"],
+    section[data-testid="stSidebar"] [data-baseweb="select"] > div {
+        color: #f3f5ff !important;
+        background: #111326 !important;
+        border-color: #2d3152 !important;
+    }
+    [data-baseweb="select"] > div,
+    [data-baseweb="input"],
+    [data-baseweb="base-input"],
+    input,
+    textarea {
+        color: #f3f5ff !important;
+        background-color: #111326 !important;
+        border-color: #2d3152 !important;
     }
     .kpi-card {
         min-height: 142px;
@@ -363,7 +448,6 @@ st.markdown(
         padding: .8rem 1rem;
         border-bottom: 1px solid #202236;
     }
-    .assistant-top-button [data-testid="stButton"] button,
     div[data-testid="stButton"] button[kind="primary"] {
         border-radius: 999px !important;
         background: linear-gradient(135deg, #7167dc, #4f8cff) !important;
@@ -371,14 +455,131 @@ st.markdown(
         box-shadow: 0 14px 34px rgba(0, 0, 0, .30) !important;
         font-weight: 800 !important;
     }
+    .st-key-abrir_assistente_financeiro_floating {
+        position: fixed !important;
+        right: 28px !important;
+        bottom: 28px !important;
+        z-index: 9999 !important;
+        width: 64px !important;
+    }
+    .st-key-abrir_assistente_financeiro_floating [data-testid="stButton"] button,
+    .st-key-abrir_assistente_financeiro_floating button {
+        width: 64px !important;
+        height: 64px !important;
+        min-height: 64px !important;
+        padding: 0 !important;
+        border-radius: 50% !important;
+        background: radial-gradient(circle at 28% 24%, #9d95ff 0, #7167dc 38%, #4f8cff 100%) !important;
+        border: 1px solid rgba(160, 165, 255, .38) !important;
+        box-shadow: 0 18px 38px rgba(79, 140, 255, .28), 0 10px 26px rgba(0, 0, 0, .38) !important;
+        color: transparent !important;
+        font-size: 0 !important;
+        font-weight: 800 !important;
+        position: relative !important;
+        overflow: hidden !important;
+        text-indent: -9999px !important;
+    }
+    .st-key-abrir_assistente_financeiro_floating [data-testid="stButton"] button::before,
+    .st-key-abrir_assistente_financeiro_floating button::before {
+        content: "" !important;
+        width: 38px !important;
+        height: 38px !important;
+        display: block !important;
+        position: absolute !important;
+        left: 50% !important;
+        top: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        background: center / contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='none' stroke='white' stroke-width='4.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 32v-6c0-9.4 7.6-17 17-17s17 7.6 17 17v6'/%3E%3Cpath d='M15 29h-3a4 4 0 0 0-4 4v6a4 4 0 0 0 4 4h3V29Z'/%3E%3Cpath d='M49 29h3a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4h-3V29Z'/%3E%3Cpath d='M20 33c5-1 9-4 12-9 3 5 8 8 14 9'/%3E%3Cpath d='M20 35c0 9 5 16 12 16s12-7 12-16'/%3E%3Cpath d='M23 55c3-2 5-4 5-7'/%3E%3Cpath d='M41 55c-3-2-5-4-5-7'/%3E%3Cpath d='M17 61c1-5 4-8 10-9'/%3E%3Cpath d='M47 61c-1-5-4-8-10-9'/%3E%3Cpath d='M28 39h8'/%3E%3Cpath d='M44 44c0 4-3 6-8 6'/%3E%3Cpath d='M36 50h-5'/%3E%3C/svg%3E") !important;
+    }
+    .assistant-welcome-card {
+        padding: 1.25rem 1.35rem;
+        margin: .15rem 0 1rem;
+        border-radius: 18px;
+        background: linear-gradient(135deg, #7167dc 0%, #4f8cff 100%);
+        border: 1px solid rgba(206, 211, 255, .28);
+        box-shadow: 0 18px 40px rgba(0,0,0,.25);
+    }
+    .assistant-welcome-card .assistant-eyebrow {
+        margin-bottom: .8rem;
+        color: rgba(255,255,255,.76) !important;
+        font-size: .72rem;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+    .assistant-welcome-card .assistant-title {
+        color: #ffffff !important;
+        font-size: 1.35rem;
+        line-height: 1.22;
+        font-weight: 900;
+    }
+    div[role="dialog"]:has(.assistant-chat-panel) {
+        position: fixed !important;
+        inset: auto 24px 104px auto !important;
+        width: min(420px, calc(100vw - 32px)) !important;
+        max-width: min(420px, calc(100vw - 32px)) !important;
+        max-height: min(720px, calc(100vh - 132px)) !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        transform: none !important;
+        border-radius: 24px !important;
+        overflow: hidden !important;
+        border: 1px solid rgba(160, 165, 255, .28) !important;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, .48) !important;
+    }
+    div[role="dialog"]:has(.assistant-chat-panel) > div {
+        max-height: min(720px, calc(100vh - 132px)) !important;
+        overflow-y: auto !important;
+        padding: 1.1rem !important;
+    }
+    div[role="dialog"]:has(.assistant-chat-panel)
+    div[data-testid="InputInstructions"] {
+        display: none !important;
+    }
+    [data-testid="stDialog"]:has(.assistant-chat-panel),
+    [data-testid="stDialog"]:has(.assistant-chat-panel) > div {
+        background: transparent !important;
+        pointer-events: none !important;
+    }
+    [data-testid="stDialog"]:has(.assistant-chat-panel) div[role="dialog"],
+    [data-testid="stDialog"]:has(.assistant-chat-panel) div[role="dialog"] > div {
+        pointer-events: auto !important;
+    }
+    [data-testid="stDialog"]:has(.assistant-chat-panel)::backdrop,
+    div[role="dialog"]:has(.assistant-chat-panel)::backdrop,
+    dialog:has(.assistant-chat-panel)::backdrop {
+        background: transparent !important;
+        backdrop-filter: none !important;
+    }
+    @media (max-width: 700px) {
+        .st-key-abrir_assistente_financeiro_floating {
+            right: 16px !important;
+            bottom: 16px !important;
+            width: 58px !important;
+        }
+        .st-key-abrir_assistente_financeiro_floating [data-testid="stButton"] button,
+        .st-key-abrir_assistente_financeiro_floating button {
+            width: 58px !important;
+            height: 58px !important;
+            min-height: 58px !important;
+        }
+        div[role="dialog"]:has(.assistant-chat-panel) {
+            inset: auto 12px 84px 12px !important;
+            width: auto !important;
+            max-width: none !important;
+            max-height: calc(100vh - 104px) !important;
+        }
+    }
     [data-testid="stDialog"] {
-        background: #0f1120 !important;
+        background: transparent !important;
+        pointer-events: none !important;
     }
     [data-testid="stDialog"] > div,
     div[role="dialog"],
     div[role="dialog"] > div {
         color: #e7e9f3 !important;
         background: #0f1120 !important;
+        pointer-events: auto !important;
     }
     div[role="dialog"] label,
     div[role="dialog"] p,
@@ -753,7 +954,18 @@ def classificar_grupo_custo(df: pd.DataFrame) -> pd.Series:
         "tipo",
         pd.Series("Custo Variável", index=df.index),
     ).fillna("Custo Variável").map(normalizar_texto)
+    fontes = df.get(
+        "fonte",
+        pd.Series("", index=df.index),
+    ).fillna("").map(normalizar_texto)
+    estabelecimentos = df.get(
+        "estabelecimento",
+        pd.Series("", index=df.index),
+    ).fillna("").map(normalizar_texto)
     texto = categorias + " " + descricoes + " " + tipos
+    eh_amigotech = fontes.str.contains(
+        "amigotech", regex=False
+    ) | estabelecimentos.str.contains("amigotech", regex=False)
     categorias_fixas_modelo = [
         "13 salario",
         "agua e saneamento",
@@ -864,7 +1076,16 @@ def classificar_grupo_custo(df: pd.DataFrame) -> pd.Series:
         r"outras despesas com pessoal|irrf",
         regex=True,
     ))
-    fixo = fixo_modelo | (fixo_por_texto & ~variavel_modelo)
+    fixo_amigotech = eh_amigotech & texto.str.contains(
+        r"servico\s+de\s+terceiros|servicos?\s+de\s+terceiros|"
+        r"servico\s+de\s+medicos?\s+pessoa\s+juridica|"
+        r"servicos?\s+de\s+medicos?\s+pessoa\s+juridica|"
+        r"repasse\s+dr\b|repasse\s+dra\b|"
+        r"tributos?\s+e\s+contribuicoes|das\s+ref|"
+        r"energia\s+eletrica|gestao\s+financeira",
+        regex=True,
+    )
+    fixo = fixo_modelo | (fixo_por_texto & ~variavel_modelo) | fixo_amigotech
 
     return pd.Series(
         [
@@ -1016,11 +1237,43 @@ def filtrar_fornecedores_producao(df: Optional[pd.DataFrame]) -> pd.DataFrame:
         "categoria",
         pd.Series("", index=base.index),
     ).fillna("").map(normalizar_texto)
+    fonte_norm = base.get(
+        "fonte",
+        pd.Series("", index=base.index),
+    ).fillna("").map(normalizar_texto)
+    estabelecimento_norm = base.get(
+        "estabelecimento",
+        pd.Series("", index=base.index),
+    ).fillna("").map(normalizar_texto)
+    eh_amigotech = fonte_norm.str.contains(
+        "amigotech", regex=False
+    ) | estabelecimento_norm.str.contains("amigotech", regex=False)
     fornecedor_listado = fornecedor_canonico != ""
     fornecedor_informado = fornecedor_original != ""
     fornecedor_por_despesa_operacional = (
         categoria_norm.str.contains(r"despesas?\s+operacionais?", regex=True)
         & (descricao_limpa != "")
+    )
+    fornecedor_por_categoria_belle_operacional = (
+        categoria_norm.str.contains(
+            r"4\.1\.3\.005|produtos?\s+farmaceuticos?.*manipulacao|"
+            r"4\.1\.3\.094|material\s+clinico|material\s+cl[ií]nico|"
+            r"4\.1\.3\.013|aquisicao\s+de\s+equipamentos|aquisição\s+de\s+equipamentos|"
+            r"despesas?\s+operacionais?",
+            regex=True,
+        )
+        & ((fornecedor_original != "") | (descricao_limpa != ""))
+    )
+    fornecedor_por_amigotech_operacional = (
+        eh_amigotech
+        & categoria_norm.str.contains(
+            r"insumos?\s+clinica|insumos?\s+cl[ií]nica|"
+            r"materiais?\s+e\s+medicamentos?|"
+            r"material\s+de\s+escritorio|material\s+de\s+escrit[oó]rio|"
+            r"propaganda\s+e\s+publicidade",
+            regex=True,
+        )
+        & ((fornecedor_original != "") | (descricao_limpa != ""))
     )
     fora_producao = texto.str.contains(
         r"simples\s+nacional|imposto|tributo|salario|salarios|ordenado|"
@@ -1038,8 +1291,10 @@ def filtrar_fornecedores_producao(df: Optional[pd.DataFrame]) -> pd.DataFrame:
         fornecedor_listado
         | fornecedor_informado
         | fornecedor_por_despesa_operacional
+        | fornecedor_por_categoria_belle_operacional
+        | fornecedor_por_amigotech_operacional
     )
-    return base[fornecedor_valido & ~fora_producao].copy()
+    return base[fornecedor_valido & (~fora_producao | fornecedor_por_amigotech_operacional)].copy()
 
 
 def filtrar_por_periodo(
@@ -1794,23 +2049,348 @@ def resposta_assistente(
         resultado_operacional_periodo / recebimentos_periodo * 100
         if recebimentos_periodo > 0 else 0
     )
+    percentual_despesas = (
+        despesas_periodo / recebimentos_periodo * 100
+        if recebimentos_periodo > 0 else 0
+    )
+    percentual_vendas_recebidas = (
+        recebimentos_periodo / vendas_periodo * 100
+        if vendas_periodo > 0 else 0
+    )
+    contato_suporte = "o suporte financeiro"
 
-    if any(p in texto for p in ["receita", "recebimento", "entrada", "faturei"]):
+    def listar_top(df: Optional[pd.DataFrame], nome_coluna: str) -> str:
+        if df is None or df.empty or nome_coluna not in df.columns or "valor" not in df.columns:
+            return ""
+        resumo_top = (
+            df.copy()
+            .assign(valor=pd.to_numeric(df["valor"], errors="coerce").fillna(0).abs())
+            .groupby(nome_coluna, as_index=False)["valor"]
+            .sum()
+            .sort_values("valor", ascending=False)
+            .head(5)
+        )
+        if resumo_top.empty:
+            return ""
+        return "\n".join(
+            f"- {row[nome_coluna]}: {fmt_brl_chat(float(row['valor']))}"
+            for _, row in resumo_top.iterrows()
+        )
+
+    def tem(*termos: str) -> bool:
+        return any(termo in texto for termo in termos)
+
+    def resposta_glossario() -> str:
+        glossario = [
+            (
+                ["recebimento", "receita", "entrada", "entrou"],
+                "Recebimentos são os valores que entraram de fato no período. "
+                "Eles podem vir de caixa, banco direto, maquininha, boletos ou do sistema financeiro importado.",
+            ),
+            (
+                ["venda", "vendas", "faturamento", "vendi", "vendido"],
+                "Vendas aprovadas mostram o que foi vendido no sistema. Isso não é necessariamente igual ao dinheiro recebido, "
+                "porque pode existir prazo de cartão, boleto ainda não liquidado, parcelas, taxas ou lançamentos em aberto.",
+            ),
+            (
+                ["resultado", "lucro", "prejuizo", "prejuízo", "lucrei", "sobrou"],
+                "Resultado é o que sobra depois dos recebimentos pagarem despesas e saídas de lucro. "
+                "Neste app, a conta é: recebimentos - despesas - retirada de lucro - antecipação de lucro.",
+            ),
+            (
+                ["margem"],
+                "Margem mostra quanto o resultado representa dos recebimentos. Exemplo: margem de 10% significa que, "
+                "a cada R$ 100 recebidos, sobraram R$ 10 depois dos descontos considerados.",
+            ),
+            (
+                ["despesa", "gasto", "custo"],
+                "Despesas são os gastos da operação. O app separa custo fixo, custo variável, pró-labore, retirada de lucro "
+                "e antecipação de lucro para não misturar tudo em um número só.",
+            ),
+            (
+                ["custo fixo", "fixo"],
+                "Custo fixo é o gasto que tende a existir mesmo que a clínica venda mais ou menos, como aluguel, salários, sistemas, "
+                "contabilidade e despesas administrativas recorrentes.",
+            ),
+            (
+                ["custo variavel", "custo variável", "variavel", "variável"],
+                "Custo variável acompanha a operação ou o volume de vendas, como impostos sobre faturamento, comissões, materiais, "
+                "insumos, medicamentos e taxas de maquininha.",
+            ),
+            (
+                ["pro labore", "pro-labore", "pró labore", "pró-labore"],
+                "Pró-labore é remuneração de sócio pela atuação no negócio. No app ele entra nas despesas, diferente de retirada de lucro.",
+            ),
+            (
+                ["retirada", "retirada de lucro"],
+                "Retirada de lucro é distribuição de lucro para sócios. Ela não é despesa operacional, mas reduz o resultado final.",
+            ),
+            (
+                ["antecipacao", "antecipação"],
+                "Antecipação é quando valores futuros são recebidos antes do prazo. O app separa o valor antecipado e o custo/juros da antecipação.",
+            ),
+            (
+                ["maquininha", "cartao", "cartão", "mdr"],
+                "Maquininha mostra vendas de cartão e seus descontos: bruto da venda, percentual da taxa, valor da taxa e líquido recebido.",
+            ),
+            (
+                ["bruto"],
+                "Bruto é o valor original antes de taxas, descontos ou juros.",
+            ),
+            (
+                ["liquido", "líquido"],
+                "Líquido é o valor que sobra depois de taxas, descontos ou juros. É o valor que normalmente entra como recebido.",
+            ),
+            (
+                ["banco direto"],
+                "Banco direto são entradas identificadas diretamente no banco, sem serem caixa ou maquininha conciliada.",
+            ),
+            (
+                ["caixa"],
+                "Caixa representa entradas em dinheiro ou caixa interno, quando a planilha traz essa forma de recebimento.",
+            ),
+            (
+                ["fornecedor", "fornecedores"],
+                "Fornecedores mostram para quem foram os maiores gastos ligados à produção/operação, como materiais, medicamentos, insumos, exames e itens clínicos.",
+            ),
+            (
+                ["comparativo", "evolucao", "evolução"],
+                "Comparativo usa relatórios salvos para mostrar a evolução mês a mês de vendas, fornecedores, despesas, recebimentos e resultado.",
+            ),
+            (
+                ["variacao", "variação"],
+                "Variação é a diferença entre um valor inicial e um valor final. Em saldo bancário, por exemplo, é saldo final menos saldo inicial.",
+            ),
+            (
+                ["conciliacao", "conciliação", "conciliar"],
+                "Conciliação é a conferência entre sistema, banco e maquininha para evitar duplicidade e garantir que o recebido bate com a fonte oficial.",
+            ),
+            (
+                ["saldo", "investimento", "investimentos"],
+                "Saldo Bancário mostra dinheiro em conta e investimentos quando os arquivos importados trazem essas informações.",
+            ),
+        ]
+        for termos, resposta in glossario:
+            if any(termo in texto for termo in termos):
+                return resposta
+
+        pagina_atual = st.session_state.get("pagina", "")
+        if pagina_atual == "Visão Financeira":
+            return (
+                "Esta tela resume o período selecionado: recebimentos, despesas, vendas aprovadas e resultado final. "
+                "O resultado é calculado a partir dos recebimentos menos despesas e saídas de lucro."
+            )
+        if pagina_atual == "Detalhes":
+            return (
+                "A tela Detalhes mostra os lançamentos importados por tipo: contas pagas, recebimentos, vendas e maquininhas. "
+                "Ela ajuda a conferir de onde cada número do resumo saiu."
+            )
+        if pagina_atual == "Fornecedores":
+            return (
+                "A tela Fornecedores mostra os gastos ligados à produção/operação, ajudando a enxergar para onde está indo "
+                "o maior gasto operacional."
+            )
+        return (
+            "Esse campo faz parte do relatório financeiro. Se você me disser o nome do indicador, eu explico melhor "
+            "o que ele significa e como ele entra na conta."
+        )
+
+    def diagnostico_resultado() -> str:
+        partes = [
+            f"Recebimentos: {fmt_brl_chat(recebimentos_periodo)}",
+            f"Despesas: {fmt_brl_chat(despesas_periodo)}",
+            f"Retirada de lucro: {fmt_brl_chat(retiradas_periodo)}",
+            f"Antecipação de lucro: {fmt_brl_chat(antecipacoes_lucro_periodo)}",
+            f"Resultado final: {fmt_brl_chat(resultado_final_periodo)}",
+        ]
+        impactos = {
+            "despesas": despesas_periodo,
+            "retirada de lucro": retiradas_periodo,
+            "antecipação de lucro": antecipacoes_lucro_periodo,
+        }
+        maior_nome, maior_valor = max(impactos.items(), key=lambda item: abs(item[1]))
+        leitura = (
+            f"O maior peso no resultado foi {maior_nome}, com {fmt_brl_chat(maior_valor)}. "
+            if abs(maior_valor) > 0 else ""
+        )
+        if resultado_final_periodo < 0:
+            leitura += "Como as saídas superaram o que entrou no período, o resultado ficou negativo."
+        else:
+            leitura += "Como os recebimentos cobriram as saídas consideradas, o resultado ficou positivo."
+        return (
+            "A conta do resultado é:\n\n"
+            "**Recebimentos - despesas - retirada de lucro - antecipação de lucro.**\n\n"
+            + "\n".join(f"- {parte}" for parte in partes)
+            + f"\n\n{leitura}"
+        )
+
+    if tem("o que significa", "oq significa", "o que e", "o que é", "quer dizer", "explica", "explique", "significado"):
+        return resposta_glossario()
+
+    if tem("por que", "porque", "pq ", "deu esse valor", "chegou nesse valor", "como calcul", "como chegou", "nao bate", "não bate"):
+        if tem("resultado", "lucro", "lucrei", "prejuizo", "prejuízo", "sobrou", "margem"):
+            return diagnostico_resultado()
+        if tem("venda", "recebimento", "receita", "entrada", "faturamento"):
+            diferenca = vendas_periodo - recebimentos_periodo
+            return (
+                f"No período {periodo_label}, vendas aprovadas somam {fmt_brl_chat(vendas_periodo)} "
+                f"e recebimentos somam {fmt_brl_chat(recebimentos_periodo)}.\n\n"
+                f"A diferença entre vendas e recebimentos é {fmt_brl_chat(diferenca)}.\n\n"
+                "Isso pode acontecer porque venda aprovada não é sempre dinheiro recebido no mesmo dia: cartão pode liquidar depois, "
+                "boleto pode estar em aberto, pode existir taxa, parcelamento, lançamento em caixa ou conciliação com banco/maquininha."
+            )
+        if tem("despesa", "gasto", "custo"):
+            return (
+                f"As despesas somam {fmt_brl_chat(despesas_periodo)} porque o app considera os lançamentos classificados como "
+                f"custo fixo ({fmt_brl_chat(custos_fixos_periodo)}), custo variável ({fmt_brl_chat(custos_variaveis_periodo)}) "
+                "e demais grupos de despesa conforme a regra do sistema importado.\n\n"
+                "Retirada de lucro fica separada e pró-labore entra como despesa."
+            )
+        pagina_atual = st.session_state.get("pagina", "")
+        if pagina_atual == "Visão Financeira":
+            return diagnostico_resultado()
+        return (
+            "Quando um valor parece estranho, eu confiro primeiro o período global, depois a origem do lançamento "
+            "em Detalhes e por fim se existe duplicidade entre banco, sistema e maquininha.\n\n"
+            "Se a dúvida for sobre o resultado, a fórmula é recebimentos - despesas - retirada de lucro - antecipação de lucro."
+        )
+
+    if tem("quanto vendi", "quanto vendeu", "quanto vendemos", "vendi", "vendemos", "faturamento", "faturei", "vendas do mes", "vendas do mês"):
+        texto += " venda"
+    if tem("quanto recebi", "quanto entrou", "entradas", "recebi", "recebemos", "recebido"):
+        texto += " recebimento"
+    if tem("quanto lucrei", "lucrei", "sobrou", "lucrou", "lucro do mes", "lucro do mês"):
+        texto += " resultado"
+    if tem("quanto gastei", "gastei", "gastamos", "gasto total", "maior despesa", "maiores despesas", "onde gastei"):
+        texto += " despesa"
+
+    if any(p in texto for p in ["receita", "recebimento", "entrada", "faturei", "recebi", "recebemos", "recebido"]):
+        formas_txt = ""
+        if "df_formas_recebimento_periodo" in globals():
+            formas_txt = listar_top(
+                globals().get("df_formas_recebimento_periodo"),
+                "forma",
+            )
         return (
             f"No período {periodo_label}, os recebimentos totalizam "
-            f"{fmt_brl_chat(recebimentos_periodo)}."
+            f"{fmt_brl_chat(recebimentos_periodo)}.\n\n"
+            f"As vendas aprovadas somam {fmt_brl_chat(vendas_periodo)}, então "
+            f"o recebido representa {percentual_vendas_recebidas:.1f}% das vendas."
+            + (f"\n\nPrincipais formas de recebimento:\n{formas_txt}" if formas_txt else "")
+        )
+    if any(p in texto for p in ["venda", "vendas", "servico", "serviço", "procedimento"]):
+        servicos_txt = ""
+        if "base_recebimentos_belle" in globals() and not globals().get("base_recebimentos_belle").empty:
+            base_servicos = globals().get("base_recebimentos_belle").copy()
+            if "servico_vendido" in base_servicos.columns:
+                base_servicos["servico_resumo"] = base_servicos["servico_vendido"].fillna("Serviço não identificado").astype(str)
+                coluna_valor = "valor_liquido" if "valor_liquido" in base_servicos.columns else "valor"
+                base_servicos["valor"] = pd.to_numeric(base_servicos[coluna_valor], errors="coerce").fillna(0).abs()
+                servicos_txt = listar_top(base_servicos, "servico_resumo")
+        return (
+            f"As vendas aprovadas no período somam {fmt_brl_chat(vendas_periodo)}."
+            + (f"\n\nServiços/produtos com maior valor:\n{servicos_txt}" if servicos_txt else "")
+        )
+    if any(p in texto for p in ["fornecedor", "fornecedores", "maior gasto", "produção", "producao"]):
+        fornecedores_txt = ""
+        if "pagamentos_periodo_global" in globals():
+            fornecedores_base = filtrar_fornecedores_producao(
+                globals().get("pagamentos_periodo_global", {}).get(
+                    "contas_conciliadas",
+                    pd.DataFrame(),
+                )
+            )
+            fornecedores_txt = listar_top(fornecedores_base, "fornecedor")
+        return (
+            "Estes são os principais fornecedores ligados à operação no período."
+            + (f"\n\nPrincipais fornecedores no período:\n{fornecedores_txt}" if fornecedores_txt else "")
+        )
+    if any(p in texto for p in ["maior despesa", "maiores despesas", "onde gastei", "gastei mais", "maior custo", "maiores custos"]):
+        despesas_txt = ""
+        if "pagamentos_periodo_global" in globals():
+            despesas_base = globals().get("pagamentos_periodo_global", {}).get(
+                "contas_conciliadas",
+                pd.DataFrame(),
+            )
+            if despesas_base is not None and not despesas_base.empty:
+                despesas_base = despesas_base.copy()
+                coluna_grupo = "grupo_custo" if "grupo_custo" in despesas_base.columns else "categoria"
+                if coluna_grupo in despesas_base.columns:
+                    despesas_txt = listar_top(despesas_base, coluna_grupo)
+        return (
+            f"As despesas do período somam {fmt_brl_chat(despesas_periodo)}."
+            + (f"\n\nMaiores grupos de gasto:\n{despesas_txt}" if despesas_txt else "")
+        )
+    if any(p in texto for p in ["boleto", "boletos", "clinipay", "clini pay", "boleto pix", "boletopix"]):
+        df_clinipay_assistente = globals().get(
+            "df_clinipay_base_periodo",
+            pd.DataFrame(),
+        )
+        if df_clinipay_assistente is None or df_clinipay_assistente.empty:
+            return (
+                "Não encontrei boletos/Clinipay importados neste período.\n\n"
+                "Para eu responder sobre bruto, taxa, juros e líquido, importe o "
+                "arquivo de recebíveis do Clinipay na área de Extrato Clinipay."
+            )
+        resumo_clinipay = calcular_taxas_clinipay(df_clinipay_assistente)
+        formas_clinipay = ""
+        if "forma_clinipay" in df_clinipay_assistente.columns:
+            base_formas = df_clinipay_assistente.copy()
+            base_formas["valor"] = pd.to_numeric(
+                base_formas.get("valor", 0),
+                errors="coerce",
+            ).fillna(0)
+            formas_clinipay = listar_top(base_formas, "forma_clinipay")
+        return (
+            f"No período {periodo_label}, boletos/Clinipay somam:\n\n"
+            f"- Bruto liquidado: {fmt_brl_chat(resumo_clinipay['bruto'])}\n"
+            f"- Taxas de liquidação: {fmt_brl_chat(resumo_clinipay['taxas'])}\n"
+            f"- Juros/multa: {fmt_brl_chat(resumo_clinipay['juros'])}\n"
+            f"- Líquido recebido: {fmt_brl_chat(resumo_clinipay['liquido'])}\n"
+            f"- Lançamentos: {int(resumo_clinipay['lancamentos'])}\n\n"
+            f"Taxa média: {resumo_clinipay['taxa_media']:.2f}% e juros médio: "
+            f"{resumo_clinipay['juros_medio']:.2f}%."
+            + (f"\n\nPor forma:\n{formas_clinipay}" if formas_clinipay else "")
+        )
+    if any(p in texto for p in ["maquininha", "cartao", "cartão", "taxa", "mdr"]):
+        total_taxas = 0.0
+        total_liquido_maquininha = 0.0
+        if "df_maquininhas_periodo" in globals():
+            df_maq = globals().get("df_maquininhas_periodo")
+            if df_maq is not None and not df_maq.empty:
+                total_taxas = float(pd.to_numeric(df_maq.get("taxa_maquininha", df_maq.get("taxa", 0)), errors="coerce").fillna(0).abs().sum())
+                total_liquido_maquininha = float(pd.to_numeric(df_maq.get("valor", 0), errors="coerce").fillna(0).sum())
+        if total_taxas == 0 and total_liquido_maquininha == 0:
+            return (
+                "Não encontrei movimentações de maquininha detalhadas neste período.\n\n"
+                "Para responder sobre taxa, bruto, líquido e bandeira, importe o "
+                "extrato detalhado da operadora de cartão."
+            )
+        return (
+            "Em maquininhas, o app mostra o valor bruto, percentual da taxa, "
+            "valor da taxa e líquido recebido quando essas informações existem "
+            "no extrato importado.\n\n"
+            f"Taxas identificadas no período: {fmt_brl_chat(total_taxas)}.\n\n"
+            f"Líquido de maquininha identificado: {fmt_brl_chat(total_liquido_maquininha)}."
         )
     if "retirada" in texto or "distribuicao" in texto:
         return (
             f"A retirada de lucro no período é {fmt_brl_chat(retiradas_periodo)}. "
-            "Ela é identificada pela categoria e apresentada separadamente dos "
-            "demais custos variáveis."
+            "Ela não entra como despesa operacional; ela é descontada do resultado "
+            "final para mostrar o efeito real da saída de lucro."
+        )
+    if any(p in texto for p in ["pro labore", "pro-labore", "pró labore", "pró-labore"]):
+        return (
+            "Pró-labore é tratado diferente de retirada de lucro.\n\n"
+            f"No período, o pró-labore está dentro das despesas e as retiradas "
+            f"ficam separadas. Retirada de lucro: {fmt_brl_chat(retiradas_periodo)}."
         )
     if any(p in texto for p in ["despesa", "gasto", "custo"]):
         return (
             f"As despesas somam {fmt_brl_chat(despesas_periodo)}.\n\n"
             f"Custos fixos: {fmt_brl_chat(custos_fixos_periodo)}.\n\n"
             f"Custos variáveis: {fmt_brl_chat(custos_variaveis_periodo)}.\n\n"
+            f"As despesas representam {percentual_despesas:.1f}% dos recebimentos.\n\n"
             f"A retirada de lucro, apresentada à parte, é "
             f"{fmt_brl_chat(retiradas_periodo)} e a antecipação de lucro é "
             f"{fmt_brl_chat(antecipacoes_lucro_periodo)}."
@@ -1828,6 +2408,25 @@ def resposta_assistente(
         )
     if any(p in texto for p in ["periodo", "mensal", "bimestral", "trimestral", "anual"]):
         return f"A análise exibida considera o período {periodo_label}."
+    if any(p in texto for p in ["comparativo", "comparar", "meses", "evolucao", "evolução"]):
+        return (
+            "O comparativo usa os relatórios salvos do cliente selecionado. "
+            "Ele separa vendas por serviço, fornecedores, despesas, recebimentos "
+            "e resultado para mostrar a evolução mês a mês."
+        )
+    if any(p in texto for p in ["saldo", "banco", "investimento", "investimentos"]):
+        return (
+            "O Saldo Bancário mostra contas bancárias e investimentos quando os "
+            "arquivos de banco trazem essas informações. OFX normalmente ajuda "
+            "nos movimentos; Excel pode trazer saldo final e investimentos."
+        )
+    if any(p in texto for p in ["conciliacao", "conciliação", "duplicado", "duplicidade", "nao bate", "não bate", "diferença", "diferenca"]):
+        return (
+            "Quando algum número não bate, eu começaria conferindo três pontos: "
+            "período global, lançamentos duplicados entre banco e maquininha, e "
+            "transferências entre contas entrando como recebimento ou despesa.\n\n"
+            "Também vale comparar a aba Detalhes com a fonte oficial do sistema."
+        )
     if any(p in texto for p in ["importar", "arquivo", "excel", "ofx"]):
         if st.session_state.get("share_mode"):
             return (
@@ -1846,12 +2445,12 @@ def resposta_assistente(
         )
 
     return (
-        "Ainda não tenho uma resposta padrão para essa pergunta. "
-        "Entre em contato com o suporte financeiro para uma orientação específica."
+        "Ainda não tenho segurança para responder essa pergunta com os dados atuais. "
+        f"Fale com {contato_suporte} para tirar essa dúvida com mais precisão."
     )
 
 
-@st.dialog("💬 Assistente Financeiro", width="large")
+@st.dialog("💬 Assistente Financeiro", width="small")
 def abrir_assistente(
     periodo_label,
     recebimentos_periodo,
@@ -1862,8 +2461,14 @@ def abrir_assistente(
     retiradas_periodo,
     antecipacoes_lucro_periodo=0.0,
 ):
-    st.caption(
-        "Pergunte sobre receitas, despesas, resultado, retirada, período ou importação."
+    st.markdown('<div class="assistant-chat-panel"></div>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="assistant-welcome-card">
+            <div class="assistant-title">Olá! Como posso ajudar com este relatório?</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     for item in st.session_state.historico_chat[-6:]:
@@ -1893,7 +2498,8 @@ def abrir_assistente(
             {"papel": "user", "texto": pergunta_chat.strip()},
             {"papel": "assistant", "texto": resposta_chat},
         ])
-        st.rerun(scope="fragment")
+        st.session_state.abrir_assistente_agora = True
+        st.rerun()
 
 
 def validar_entrada_usuario(username: str, password: str) -> Tuple[bool, str]:
@@ -2078,7 +2684,7 @@ def ler_tabelas_amigotech(uploaded_file) -> List[pd.DataFrame]:
     for bruto in candidatos:
         df = promover_cabecalho_por_termos(
             bruto,
-            ["data de pagamento", "tipo", "valor"],
+            ["data", "tipo", "valor"],
         )
         if df is None or df.empty:
             continue
@@ -2407,7 +3013,7 @@ def processar_amigotech_receber(uploaded_file) -> pd.DataFrame:
                 "-", "", regex=False
             ).str.strip() != ""
             categoria_venda = texto_categoria.str.contains(
-                r"receita\s+operacional|prestacao\s+de\s+servico|prestação\s+de\s+serviço",
+                r"receitas?\s+operacionais?|receita\s+operacional",
                 regex=True,
             )
             movimento_nao_venda = texto_movimento.str.contains(
@@ -2418,10 +3024,8 @@ def processar_amigotech_receber(uploaded_file) -> pd.DataFrame:
                 r"mercado\s+pago|\brede\s+(visa|mast|master|elo|amex)",
                 regex=True,
             )
-            df["venda_valida"] = (
-                (~tem_categoria_informada | categoria_venda)
-                & ~movimento_nao_venda
-            )
+            df = df[categoria_venda & ~movimento_nao_venda].copy()
+            df["venda_valida"] = True
             df["fonte_venda"] = "Amigotech"
             df["_linha_origem_amigotech"] = df.index
             df = df.dropna(subset=["valor", "data"])
@@ -2439,6 +3043,207 @@ def processar_amigotech_receber(uploaded_file) -> pd.DataFrame:
     except Exception as e:
         logger.error("Erro ao processar recebimentos Amigotech: %s", e)
         st.error(f"❌ Erro ao processar recebimentos Amigotech: {str(e)}")
+        return pd.DataFrame()
+
+
+def processar_amigotech_vendas(uploaded_file) -> pd.DataFrame:
+    try:
+        quadros = []
+        tabelas_brutas = ler_todas_tabelas_flexiveis(uploaded_file, header=None)
+        for bruto in tabelas_brutas:
+            if bruto is None or bruto.empty:
+                continue
+            texto_bruto = " ".join(
+                normalizar_texto(valor)
+                for valor in bruto.head(8).to_numpy().ravel().tolist()
+                if str(valor).strip() and str(valor).lower() != "nan"
+            )
+            if not (
+                "relatorio de vendas" in texto_bruto
+                and "tipo de atendimento" in texto_bruto
+                and "total" in texto_bruto
+            ):
+                continue
+
+            data_referencia = pd.NaT
+            for valor in bruto.head(8).to_numpy().ravel().tolist():
+                texto_valor = str(valor or "")
+                match_periodo = re.search(
+                    r"(\d{2}/\d{2}/\d{4})\s*a\s*(\d{2}/\d{2}/\d{4})",
+                    texto_valor,
+                )
+                if match_periodo:
+                    data_referencia = pd.to_datetime(
+                        match_periodo.group(1),
+                        dayfirst=True,
+                        errors="coerce",
+                    )
+                    break
+            if pd.isna(data_referencia):
+                data_referencia = pd.Timestamp(date.today().replace(day=1))
+
+            linhas_resumo = []
+            for _, row in bruto.iterrows():
+                servico = str(row.get(0, "") or "").strip()
+                servico_norm = normalizar_texto(servico)
+                if (
+                    not servico
+                    or servico_norm in {
+                        "tipo de atendimento",
+                        "relatorio de vendas",
+                    }
+                    or servico_norm.startswith("clinica ")
+                    or servico_norm.startswith("por:")
+                ):
+                    continue
+                valor_total = parse_valor_br(row.get(4, 0))
+                quantidade = parse_valor_br(row.get(1, 0))
+                if valor_total <= 0:
+                    continue
+                linhas_resumo.append({
+                    "data": data_referencia,
+                    "descricao": servico,
+                    "servico_vendido": servico,
+                    "valor": valor_total,
+                    "valor_liquido": valor_total,
+                    "valor_bruto": valor_total,
+                    "quantidade_vendas": int(quantidade) if quantidade > 0 else 1,
+                    "ticket_medio": parse_valor_br(row.get(2, 0)),
+                    "categoria": "Tipo de atendimento",
+                    "forma": "",
+                    "status": "Venda",
+                    "fonte_venda": "Amigotech",
+                    "venda_valida": True,
+                    "_linha_origem_amigotech": row.name,
+                })
+            if linhas_resumo:
+                quadros.append(pd.DataFrame(linhas_resumo))
+
+        if quadros:
+            return pd.concat(quadros, ignore_index=True, sort=False).reset_index(drop=True)
+
+        candidatos = ler_tabelas_amigotech(uploaded_file)
+
+        for df in candidatos:
+            mapa = {normalizar_texto(col): col for col in df.columns}
+
+            def localizar(*nomes):
+                nomes_norm = [normalizar_texto(nome) for nome in nomes]
+                for nome in nomes_norm:
+                    coluna = mapa.get(nome)
+                    if coluna is not None:
+                        return coluna
+                for chave, coluna in mapa.items():
+                    if any(nome in chave for nome in nomes_norm):
+                        return coluna
+                return None
+
+            col_valor = localizar(
+                "valor liquido r$", "valor líquido r$",
+                "valor liquido", "valor líquido", "valor da venda",
+                "valor venda", "valor total", "valor", "total"
+            )
+            col_valor_bruto = localizar(
+                "valor original r$", "valor bruto", "valor original",
+                "valor da venda original", "valor total", "total", "valor"
+            )
+            col_data = localizar(
+                "data da venda", "data venda", "data de venda",
+                "data pagamento", "data de pagamento", "data"
+            )
+            col_descricao = localizar(
+                "procedimento", "servico", "serviço", "item", "produto",
+                "cliente", "paciente", "pagador", "descricao", "descrição"
+            )
+            col_servico = localizar(
+                "qtd - procedimento e matmeds",
+                "procedimento e matmeds",
+                "procedimentos e matmeds",
+                "procedimento",
+                "servico",
+                "serviço",
+                "item",
+                "produto",
+            )
+            col_status = localizar("status", "situacao", "situação")
+            col_categoria = localizar("categoria", "classificacao", "classificação")
+            col_forma = localizar(
+                "forma de pagamento", "forma pagamento",
+                "meio de pagamento", "pagamento"
+            )
+            col_tipo = localizar("tipo")
+
+            if not col_valor or not col_data:
+                continue
+
+            if col_tipo:
+                tipo_norm = df[col_tipo].fillna("").map(normalizar_texto)
+                saidas = tipo_norm.str.contains("saida|saída", regex=True)
+                df = df[~saidas].copy()
+                if df.empty:
+                    continue
+            if col_status:
+                status_norm = df[col_status].fillna("").map(normalizar_texto)
+                status_invalidos = status_norm.str.contains(
+                    r"cancel|estorn|reprov|negad|expirad|aberto|pendente",
+                    regex=True,
+                )
+                df = df[~status_invalidos].copy()
+                if df.empty:
+                    continue
+
+            df["valor"] = df[col_valor].apply(parse_valor_br)
+            df["valor_liquido"] = df["valor"]
+            df["valor_bruto"] = (
+                df[col_valor_bruto].apply(parse_valor_br)
+                if col_valor_bruto else df["valor"]
+            )
+            df["data"] = pd.to_datetime(
+                df[col_data],
+                dayfirst=True,
+                errors="coerce",
+            )
+            df["descricao"] = (
+                df[col_descricao].fillna("").astype(str).str.strip()
+                if col_descricao else "Venda Amigotech"
+            )
+            df.loc[df["descricao"] == "", "descricao"] = "Venda Amigotech"
+            df["servico_vendido"] = (
+                df[col_servico].fillna("").astype(str).str.strip()
+                if col_servico else df["descricao"]
+            )
+            df.loc[df["servico_vendido"] == "", "servico_vendido"] = (
+                "Serviço não identificado"
+            )
+            df["categoria"] = (
+                df[col_categoria].fillna("").astype(str).str.strip()
+                if col_categoria else ""
+            )
+            df["forma"] = (
+                df[col_forma].fillna("").astype(str).str.strip()
+                if col_forma else ""
+            )
+            df["status"] = (
+                df[col_status].fillna("").astype(str).str.strip()
+                if col_status else "Venda"
+            )
+            df["fonte_venda"] = "Amigotech"
+            df["venda_valida"] = True
+            df["_linha_origem_amigotech"] = df.index
+            df = df.dropna(subset=["valor", "data"])
+            df = df[df["valor"] > 0]
+            if not df.empty:
+                quadros.append(df)
+
+        if not quadros:
+            st.error(
+                "❌ Vendas do Amigotech precisa conter data e valor da venda."
+            )
+            return pd.DataFrame()
+        return pd.concat(quadros, ignore_index=True, sort=False).reset_index(drop=True)
+    except Exception as e:
+        logger.error("Erro ao processar vendas Amigotech: %s", e)
+        st.error(f"❌ Erro ao processar vendas Amigotech: {str(e)}")
         return pd.DataFrame()
 
 
@@ -3727,6 +4532,35 @@ def processar_ofx(
         return pd.DataFrame()
 
 
+def arquivo_parece_ofx(uploaded_file) -> bool:
+    try:
+        posicao = uploaded_file.tell()
+    except Exception:
+        posicao = 0
+    try:
+        uploaded_file.seek(0)
+        amostra = uploaded_file.read(2048)
+        uploaded_file.seek(posicao)
+    except Exception:
+        try:
+            uploaded_file.seek(0)
+        except Exception:
+            pass
+        return False
+    if isinstance(amostra, str):
+        texto = amostra
+    else:
+        try:
+            texto = amostra.decode("utf-8-sig", errors="ignore")
+        except Exception:
+            texto = str(amostra)
+    texto_norm = texto.upper()
+    return any(
+        marcador in texto_norm
+        for marcador in ["<OFX", "OFXHEADER", "<BANKMSGSRSV1", "<STMTTRN"]
+    )
+
+
 def processar_excel_bancos(uploaded_file) -> pd.DataFrame:
     try:
         def ler_linhas_cruas() -> pd.DataFrame:
@@ -4065,14 +4899,14 @@ def processar_excel_bancos(uploaded_file) -> pd.DataFrame:
 
 def processar_bancos(uploaded_file) -> pd.DataFrame:
     extensao = Path(uploaded_file.name).suffix.lower()
-    if extensao == ".ofx":
+    if extensao == ".ofx" or arquivo_parece_ofx(uploaded_file):
         return processar_ofx(uploaded_file, "Bancos")
     return processar_excel_bancos(uploaded_file)
 
 
 def processar_extrato_antecipacao(uploaded_file) -> pd.DataFrame:
     extensao = Path(uploaded_file.name).suffix.lower()
-    if extensao == ".ofx":
+    if extensao == ".ofx" or arquivo_parece_ofx(uploaded_file):
         return processar_ofx(uploaded_file, "Antecipação de cartão")
 
     try:
@@ -5025,6 +5859,9 @@ def criar_payload_compartilhado(user_id: int) -> str:
         "df_amigotech_receber": dataframe_para_json(
             st.session_state.df_amigotech_receber
         ),
+        "df_amigotech_vendas": dataframe_para_json(
+            st.session_state.df_amigotech_vendas
+        ),
         "df_amigotech_pagar": dataframe_para_json(
             st.session_state.df_amigotech_pagar
         ),
@@ -5076,6 +5913,9 @@ def carregar_payload_compartilhado(payload_json: str) -> None:
     )
     st.session_state.df_amigotech_receber = dataframe_do_json(
         payload.get("df_amigotech_receber")
+    )
+    st.session_state.df_amigotech_vendas = dataframe_do_json(
+        payload.get("df_amigotech_vendas")
     )
     st.session_state.df_amigotech_pagar = dataframe_do_json(
         payload.get("df_amigotech_pagar")
@@ -5176,6 +6016,8 @@ if "df_belle_gerencial" not in st.session_state:
     st.session_state.df_belle_gerencial = None
 if "df_amigotech_receber" not in st.session_state:
     st.session_state.df_amigotech_receber = None
+if "df_amigotech_vendas" not in st.session_state:
+    st.session_state.df_amigotech_vendas = None
 if "df_amigotech_pagar" not in st.session_state:
     st.session_state.df_amigotech_pagar = None
 if "df_conta_azul_receber" not in st.session_state:
@@ -5192,6 +6034,11 @@ if "upload_version" not in st.session_state:
     st.session_state.upload_version = 0
 if "historico_chat" not in st.session_state:
     st.session_state.historico_chat = []
+if "mostrar_assistente" not in st.session_state:
+    st.session_state.mostrar_assistente = False
+st.session_state.mostrar_assistente = False
+if "abrir_assistente_agora" not in st.session_state:
+    st.session_state.abrir_assistente_agora = False
 if "share_mode" not in st.session_state:
     st.session_state.share_mode = False
 if "share_token" not in st.session_state:
@@ -5212,6 +6059,12 @@ if "relatorio_salvo_para_abrir" not in st.session_state:
     st.session_state.relatorio_salvo_para_abrir = None
 if "usuario_exclusao_pendente" not in st.session_state:
     st.session_state.usuario_exclusao_pendente = None
+if "cliente_exclusao_pendente" not in st.session_state:
+    st.session_state.cliente_exclusao_pendente = None
+if "mostrar_novo_cliente" not in st.session_state:
+    st.session_state.mostrar_novo_cliente = False
+if "cliente_edicao_nome" not in st.session_state:
+    st.session_state.cliente_edicao_nome = None
 if "periodo_inicio_global" not in st.session_state:
     st.session_state.periodo_inicio_global = date.today().replace(day=1)
 if "periodo_fim_global" not in st.session_state:
@@ -5232,8 +6085,8 @@ if token_compartilhado:
         st.error("Este link de relatório é inválido, expirou ou foi revogado.")
         st.stop()
 
+    _, owner_id, titulo, payload_json, _, _ = relatorio
     if token_compartilhado != st.session_state.share_token:
-        _, owner_id, titulo, payload_json, _, _ = relatorio
         try:
             carregar_payload_compartilhado(payload_json)
         except Exception as e:
@@ -5241,16 +6094,16 @@ if token_compartilhado:
             st.error("Não foi possível carregar este relatório.")
             st.stop()
 
-        st.session_state.share_mode = True
-        st.session_state.share_token = token_compartilhado
-        st.session_state.share_title = titulo
-        st.session_state.user = User(
-            id=owner_id,
-            username=titulo,
-            is_admin=False,
-        )
         st.session_state.pagina = "visao"
         st.session_state.mostrar_modal_upload = False
+    st.session_state.share_mode = True
+    st.session_state.share_token = token_compartilhado
+    st.session_state.share_title = titulo
+    st.session_state.user = User(
+        id=owner_id,
+        username=titulo,
+        is_admin=False,
+    )
 
 # =========================
 # LOGIN
@@ -5293,12 +6146,13 @@ def abrir_compartilhamento():
         "Crie uma cópia somente leitura dos dados atuais. O cliente não poderá "
         "importar arquivos, editar contas nem acessar a administração."
     )
+    clientes_cadastrados = clientes_relatorio_ativos()
     cliente_link = st.selectbox(
         "Cliente do link",
-        CLIENTES_RELATORIO,
+        clientes_cadastrados,
         index=(
-            CLIENTES_RELATORIO.index(st.session_state.cliente_compartilhado)
-            if st.session_state.cliente_compartilhado in CLIENTES_RELATORIO
+            clientes_cadastrados.index(st.session_state.cliente_compartilhado)
+            if st.session_state.cliente_compartilhado in clientes_cadastrados
             else 0
         ),
     )
@@ -5401,6 +6255,7 @@ def limpar_dados_importados():
         "df_belle_pagar",
         "df_belle_gerencial",
         "df_amigotech_receber",
+        "df_amigotech_vendas",
         "df_amigotech_pagar",
         "df_conta_azul_receber",
         "df_conta_azul_vendas",
@@ -5426,6 +6281,7 @@ def existem_dados_importados() -> bool:
             "df_belle_pagar",
             "df_belle_gerencial",
             "df_amigotech_receber",
+            "df_amigotech_vendas",
             "df_amigotech_pagar",
             "df_conta_azul_receber",
             "df_conta_azul_vendas",
@@ -5477,6 +6333,41 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
+    pagina_ativa_sidebar = st.session_state.pagina
+    chave_ativa_sidebar = (
+        "nav_relatorios_top"
+        if pagina_ativa_sidebar == "relatorios"
+        else f"nav_{pagina_ativa_sidebar}"
+    )
+    st.markdown(
+        f"""
+        <style>
+        section[data-testid="stSidebar"] .st-key-{chave_ativa_sidebar} {{
+            position: relative !important;
+        }}
+        section[data-testid="stSidebar"] .st-key-{chave_ativa_sidebar}::before {{
+            content: "" !important;
+            position: absolute !important;
+            left: -10px !important;
+            top: 7px !important;
+            bottom: 7px !important;
+            width: 4px !important;
+            border-radius: 999px !important;
+            background: linear-gradient(180deg, #7167dc, #4f8cff) !important;
+            box-shadow: 0 0 16px rgba(113, 103, 220, .55) !important;
+        }}
+        section[data-testid="stSidebar"] .st-key-{chave_ativa_sidebar} button {{
+            color: #ffffff !important;
+            background: linear-gradient(135deg, rgba(113,103,220,.40), rgba(79,140,255,.26)) !important;
+            border-color: rgba(160,165,255,.46) !important;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 10px 24px rgba(0,0,0,.20) !important;
+            font-weight: 800 !important;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     if not st.session_state.share_mode:
         st.button(
             "📂  Importar Arquivos",
@@ -5485,16 +6376,11 @@ with st.sidebar:
             on_click=abrir_importacao,
         )
         st.button(
-            "🔗  Compartilhar Relatório",
+            "💾  Relatórios",
             use_container_width=True,
-            key="btn_share",
-            on_click=solicitar_compartilhamento,
-        )
-        st.button(
-            "💾  Salvar Relatório",
-            use_container_width=True,
-            key="btn_save_report",
-            on_click=solicitar_salvar_relatorio,
+            key="nav_relatorios_top",
+            on_click=navegar_para,
+            args=("relatorios",),
         )
     else:
         st.info("Visualização compartilhada. Os dados não podem ser alterados.")
@@ -5531,8 +6417,6 @@ with st.sidebar:
         ("detalhes",  "🔍", "Detalhes"),
         ("saldo",     "🏦", "Saldo Bancário"),
     ]
-    if not st.session_state.share_mode:
-        paginas.insert(3, ("relatorios", "💾", "Relatórios"))
     if user.is_admin and not st.session_state.share_mode:
         paginas.append(("admin", "⚙️", "Painel Admin"))
 
@@ -5552,6 +6436,258 @@ with st.sidebar:
 if st.session_state.mostrar_compartilhamento:
     st.session_state.mostrar_compartilhamento = False
     abrir_compartilhamento()
+
+
+@st.dialog("🏷️ Adicionar cliente", width="large")
+def abrir_novo_cliente():
+    st.caption(
+        "Cadastre os dados principais do cliente. As regras de fornecedores ficam "
+        "para uma próxima etapa."
+    )
+    novo_cliente = st.text_input(
+        "Nome do cliente",
+        placeholder="Ex.: Nome da clínica ou cliente",
+        key="novo_cliente_admin_dialog",
+    )
+    sistema_cliente = st.selectbox(
+        "Sistema principal",
+        ["Misto", "Belle", "Clinicorp", "Amigotech", "Conta Azul"],
+        key="sistema_cliente_admin_dialog",
+    )
+    col_maquininhas_cliente, col_bancos_cliente = st.columns(2)
+    with col_maquininhas_cliente:
+        maquininhas_cliente = st.multiselect(
+            "Maquininhas conhecidas",
+            MAQUININHAS_CONHECIDAS,
+            placeholder="Selecione as maquininhas",
+            key="maquininhas_cliente_admin_dialog",
+        )
+    with col_bancos_cliente:
+        bancos_cliente = st.multiselect(
+            "Bancos conhecidos",
+            BANCOS_CONHECIDOS,
+            placeholder="Selecione os bancos",
+            key="bancos_cliente_admin_dialog",
+        )
+    if st.button(
+        "Confirmar inclusão",
+        type="primary",
+        use_container_width=True,
+        key="confirmar_novo_cliente_admin",
+    ):
+        if not novo_cliente.strip():
+            st.error("Informe o nome do cliente.")
+        elif create_client(
+            novo_cliente,
+            sistema_cliente,
+            "\n".join(maquininhas_cliente),
+            "\n".join(bancos_cliente),
+        ):
+            st.session_state.mostrar_novo_cliente = False
+            st.success(f"Cliente '{novo_cliente.strip()}' cadastrado.")
+            st.rerun()
+        else:
+            st.warning("Este cliente já está cadastrado.")
+
+
+if st.session_state.mostrar_novo_cliente and not st.session_state.share_mode:
+    st.session_state.mostrar_novo_cliente = False
+    abrir_novo_cliente()
+
+
+@st.dialog("✏️ Editar cliente", width="large")
+def abrir_edicao_cliente(cliente_nome):
+    clientes_disponiveis = get_clients(include_inactive=True)
+    cliente_atual = next(
+        (
+            cliente for cliente in clientes_disponiveis
+            if str(cliente[1]).strip() == str(cliente_nome).strip()
+        ),
+        None,
+    )
+    if not cliente_atual:
+        st.error("Cliente não encontrado.")
+        if st.button("Fechar", use_container_width=True, key="fechar_edicao_cliente_nao_encontrado"):
+            st.session_state.cliente_edicao_nome = None
+            st.rerun()
+        return
+
+    _, nome_atual, ativo_atual, sistema_atual, maquininhas_atuais, bancos_atuais, _ = cliente_atual
+    sistemas_cliente = ["Misto", "Belle", "Clinicorp", "Amigotech", "Conta Azul"]
+    sistema_atual = sistema_atual if sistema_atual in sistemas_cliente else "Misto"
+    maquininhas_lista = [
+        item.strip() for item in str(maquininhas_atuais or "").splitlines()
+        if item.strip()
+    ]
+    bancos_lista = [
+        item.strip() for item in str(bancos_atuais or "").splitlines()
+        if item.strip()
+    ]
+    opcoes_maquininhas = list(dict.fromkeys(MAQUININHAS_CONHECIDAS + maquininhas_lista))
+    opcoes_bancos = list(dict.fromkeys(BANCOS_CONHECIDOS + bancos_lista))
+
+    st.caption("Atualize os dados principais do cliente.")
+    nome_editado = st.text_input(
+        "Nome do cliente",
+        value=nome_atual,
+        key=f"editar_cliente_nome_{cliente_atual[0]}",
+    )
+    col_status_cliente, col_sistema_cliente = st.columns(2)
+    with col_status_cliente:
+        status_editado = st.selectbox(
+            "Status",
+            ["Ativo", "Inativo"],
+            index=0 if int(ativo_atual or 0) == 1 else 1,
+            key=f"editar_cliente_status_{cliente_atual[0]}",
+        )
+    with col_sistema_cliente:
+        sistema_editado = st.selectbox(
+            "Sistema principal",
+            sistemas_cliente,
+            index=sistemas_cliente.index(sistema_atual),
+            key=f"editar_cliente_sistema_{cliente_atual[0]}",
+        )
+
+    col_maquininhas_cliente, col_bancos_cliente = st.columns(2)
+    with col_maquininhas_cliente:
+        maquininhas_editadas = st.multiselect(
+            "Maquininhas conhecidas",
+            opcoes_maquininhas,
+            default=[
+                item for item in maquininhas_lista
+                if item in opcoes_maquininhas
+            ],
+            placeholder="Selecione as maquininhas",
+            key=f"editar_cliente_maquininhas_{cliente_atual[0]}",
+        )
+    with col_bancos_cliente:
+        bancos_editados = st.multiselect(
+            "Bancos conhecidos",
+            opcoes_bancos,
+            default=[
+                item for item in bancos_lista
+                if item in opcoes_bancos
+            ],
+            placeholder="Selecione os bancos",
+            key=f"editar_cliente_bancos_{cliente_atual[0]}",
+        )
+
+    col_salvar_cliente, col_cancelar_cliente = st.columns(2)
+    with col_salvar_cliente:
+        if st.button(
+            "Salvar alterações",
+            type="primary",
+            use_container_width=True,
+            key=f"salvar_edicao_cliente_{cliente_atual[0]}",
+        ):
+            if not nome_editado.strip():
+                st.error("Informe o nome do cliente.")
+            elif update_client(
+                nome_atual,
+                nome_editado,
+                status_editado == "Ativo",
+                sistema_editado,
+                "\n".join(maquininhas_editadas),
+                "\n".join(bancos_editados),
+            ):
+                st.session_state.cliente_edicao_nome = None
+                st.success("Cliente atualizado.")
+                st.rerun()
+            else:
+                st.warning(
+                    "Não foi possível salvar. Verifique se já existe outro cliente "
+                    "com este nome."
+                )
+    with col_cancelar_cliente:
+        if st.button(
+            "Cancelar",
+            use_container_width=True,
+            key=f"cancelar_edicao_cliente_{cliente_atual[0]}",
+        ):
+            st.session_state.cliente_edicao_nome = None
+            st.rerun()
+
+
+if st.session_state.cliente_edicao_nome and not st.session_state.share_mode:
+    cliente_edicao_atual = st.session_state.cliente_edicao_nome
+    abrir_edicao_cliente(cliente_edicao_atual)
+
+
+@st.dialog("🏦 Nova conta ou investimento", width="large")
+def abrir_nova_conta():
+    st.caption("Cadastre uma conta bancária ou investimento para acompanhar no saldo.")
+    nc1, nc2 = st.columns(2)
+    with nc1:
+        nova_nome = st.text_input(
+            "Nome da conta",
+            placeholder="Ex.: Conta Corrente",
+            key="nova_conta_nome_dialog",
+        )
+    with nc2:
+        nova_banco = st.text_input(
+            "Instituição",
+            placeholder="Ex.: Sicoob",
+            key="nova_conta_banco_dialog",
+        )
+    nc_tipo, nc3, nc4 = st.columns([1.2, 1, 1])
+    with nc_tipo:
+        novo_tipo_conta = st.selectbox(
+            "Tipo",
+            ["Conta bancária", "Investimento"],
+            key="nova_conta_tipo_dialog",
+        )
+    with nc3:
+        nova_inicial = st.number_input(
+            "Saldo Inicial (R$)",
+            value=0.0,
+            format="%.2f",
+            key="nova_conta_inicial_dialog",
+        )
+    with nc4:
+        nova_final = st.number_input(
+            "Saldo Final (R$)",
+            value=0.0,
+            format="%.2f",
+            key="nova_conta_final_dialog",
+        )
+    col_salvar_conta, col_cancelar_conta = st.columns(2)
+    with col_salvar_conta:
+        if st.button(
+            "Salvar conta",
+            type="primary",
+            use_container_width=True,
+            key="salvar_nova_conta_dialog",
+        ):
+            if not nova_nome or not nova_banco:
+                st.error("Preencha nome e instituição.")
+            else:
+                try:
+                    add_conta(
+                        user.id,
+                        nova_nome,
+                        nova_banco,
+                        nova_inicial,
+                        nova_final,
+                        novo_tipo_conta,
+                    )
+                    st.session_state.mostrar_nova_conta = False
+                    st.success("Conta adicionada.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro: {str(e)}")
+    with col_cancelar_conta:
+        if st.button(
+            "Cancelar",
+            use_container_width=True,
+            key="cancelar_nova_conta_dialog",
+        ):
+            st.session_state.mostrar_nova_conta = False
+            st.rerun()
+
+
+if st.session_state.mostrar_nova_conta and not st.session_state.share_mode:
+    st.session_state.mostrar_nova_conta = False
+    abrir_nova_conta()
 
 # =========================
 # MODAL DE UPLOAD
@@ -5738,8 +6874,9 @@ if st.session_state.mostrar_modal_upload:
                     )
 
         with st.expander("🟠 Amigotech", expanded=False):
-            amigo_receber_tab, amigo_pagar_tab = st.tabs([
+            amigo_receber_tab, amigo_vendas_tab, amigo_pagar_tab = st.tabs([
                 "Entradas / recebimentos",
+                "Vendas",
                 "Saídas / despesas",
             ])
             with amigo_receber_tab:
@@ -5766,6 +6903,29 @@ if st.session_state.mostrar_modal_upload:
                         st.success(
                             "✅ Entradas Amigotech importadas: "
                             f"{fmt_brl(total_amigo_receber)}"
+                        )
+            with amigo_vendas_tab:
+                amigotech_vendas_up = st.file_uploader(
+                    "Vendas do Amigotech",
+                    type=formatos_planilha,
+                    key=f"amigotech_vendas_up_{upload_version}",
+                    accept_multiple_files=True,
+                )
+                if amigotech_vendas_up:
+                    st.session_state.df_amigotech_vendas = (
+                        processar_multiplos_arquivos(
+                            amigotech_vendas_up,
+                            processar_amigotech_vendas,
+                        )
+                    )
+                    if not st.session_state.df_amigotech_vendas.empty:
+                        total_amigo_vendas = pd.to_numeric(
+                            st.session_state.df_amigotech_vendas["valor"],
+                            errors="coerce",
+                        ).fillna(0).sum()
+                        st.success(
+                            "✅ Vendas Amigotech importadas: "
+                            f"{fmt_brl(total_amigo_vendas)}"
                         )
             with amigo_pagar_tab:
                 amigotech_pagar_up = st.file_uploader(
@@ -6001,6 +7161,13 @@ elif (
     df_orcamentos = df_orcamentos_bruto.copy()
     fonte_vendas_ativa = "Orçamentos do Clinicorp"
 elif (
+    st.session_state.df_amigotech_vendas is not None
+    and not st.session_state.df_amigotech_vendas.empty
+):
+    df_orcamentos_bruto = st.session_state.df_amigotech_vendas.copy()
+    df_orcamentos = df_orcamentos_bruto.copy()
+    fonte_vendas_ativa = "Vendas do Amigotech"
+elif (
     st.session_state.df_amigotech_receber is not None
     and not st.session_state.df_amigotech_receber.empty
 ):
@@ -6080,6 +7247,19 @@ df_antecipacao_periodo = (
 df_orcamentos_periodo = (
     filtrar_por_periodo(df_orcamentos, inicio_periodo, fim_periodo)
     if periodo_valido else pd.DataFrame()
+)
+df_amigotech_receber_periodo = (
+    filtrar_por_periodo(
+        st.session_state.df_amigotech_receber,
+        inicio_periodo,
+        fim_periodo,
+    )
+    if (
+        periodo_valido
+        and st.session_state.df_amigotech_receber is not None
+        and not st.session_state.df_amigotech_receber.empty
+    )
+    else pd.DataFrame()
 )
 df_orcamentos_bruto_periodo = (
     filtrar_por_periodo(df_orcamentos_bruto, inicio_periodo, fim_periodo)
@@ -6181,21 +7361,21 @@ coluna_recebimento_amigotech = (
     "valor_recebido"
     if (
         eh_amigotech_ativo
-        and not df_orcamentos_periodo.empty
-        and "valor_recebido" in df_orcamentos_periodo.columns
+        and not df_amigotech_receber_periodo.empty
+        and "valor_recebido" in df_amigotech_receber_periodo.columns
     )
     else "valor"
 )
 recebimentos_amigotech_periodo = (
     float(
         pd.to_numeric(
-            df_orcamentos_periodo[coluna_recebimento_amigotech],
+            df_amigotech_receber_periodo[coluna_recebimento_amigotech],
             errors="coerce",
         ).fillna(0).sum()
     )
     if eh_amigotech_ativo
-    and not df_orcamentos_periodo.empty
-    and coluna_recebimento_amigotech in df_orcamentos_periodo.columns
+    and not df_amigotech_receber_periodo.empty
+    and coluna_recebimento_amigotech in df_amigotech_receber_periodo.columns
     else 0.0
 )
 usar_recebimentos_amigotech = (
@@ -6960,7 +8140,11 @@ def criar_resumo_periodo() -> Dict[str, float]:
         not base_recebimentos_belle.empty
         and "servico_vendido" in base_recebimentos_belle.columns
         and normalizar_texto(fonte_vendas_ativa)
-        in {"orcamentos do clinicorp", "vendas do conta azul"}
+        in {
+            "orcamentos do clinicorp",
+            "vendas do conta azul",
+            "vendas do amigotech",
+        }
     ):
         vendas_por_servico_salvar = base_recebimentos_belle.copy()
         vendas_por_servico_salvar["servico_vendido"] = (
@@ -6982,10 +8166,17 @@ def criar_resumo_periodo() -> Dict[str, float]:
                     tipo_item_servico_salvar,
                 )
             ]
-        else:
+        elif normalizar_texto(fonte_vendas_ativa) == "orcamentos do clinicorp":
             vendas_por_servico_salvar["servico_vendido"] = (
                 vendas_por_servico_salvar["servico_vendido"]
                 .apply(agrupar_procedimento_clinicorp)
+            )
+        else:
+            vendas_por_servico_salvar["servico_vendido"] = (
+                vendas_por_servico_salvar["servico_vendido"]
+                .str.replace(r"^\s*\d+\s*-\s*", "", regex=True)
+                .str.strip()
+                .replace("", "Serviço não identificado")
             )
         coluna_valor_servico_salvar = (
             "valor_liquido"
@@ -6996,11 +8187,18 @@ def criar_resumo_periodo() -> Dict[str, float]:
             vendas_por_servico_salvar[coluna_valor_servico_salvar],
             errors="coerce",
         ).fillna(0).abs()
+        if "quantidade_vendas" in vendas_por_servico_salvar.columns:
+            vendas_por_servico_salvar["quantidade_card_servico"] = pd.to_numeric(
+                vendas_por_servico_salvar["quantidade_vendas"],
+                errors="coerce",
+            ).fillna(1)
+        else:
+            vendas_por_servico_salvar["quantidade_card_servico"] = 1
         resumo_servicos_salvo = (
             vendas_por_servico_salvar.groupby("servico_vendido", as_index=False)
             .agg(
                 valor=("valor_card_servico", "sum"),
-                quantidade=("valor_card_servico", "count"),
+                quantidade=("quantidade_card_servico", "sum"),
             )
             .sort_values("valor", ascending=False)
             .to_dict("records")
@@ -7058,7 +8256,7 @@ def abrir_salvar_relatorio():
     )
     mes_padrao = str(st.session_state.periodo_inicio_global.month).zfill(2)
     ano_padrao = st.session_state.periodo_inicio_global.year
-    cliente = st.selectbox("Cliente", CLIENTES_RELATORIO)
+    cliente = st.selectbox("Cliente", clientes_relatorio_ativos())
     col_mes, col_ano = st.columns([1.4, 1])
     with col_mes:
         mes_referencia = st.selectbox(
@@ -7119,6 +8317,42 @@ if (
 ):
     st.session_state.pagina = "visao"
 
+custos_fixos_assistente = float(pagamentos_periodo_global.get("fixos", 0.0))
+custos_variaveis_assistente = float(pagamentos_periodo_global.get("variaveis", 0.0))
+pro_labore_assistente = float(pagamentos_periodo_global.get("pro_labore", 0.0))
+despesas_assistente = (
+    custos_fixos_assistente
+    + custos_variaveis_assistente
+    + pro_labore_assistente
+)
+retiradas_assistente = float(pagamentos_periodo_global.get("retiradas", 0.0))
+antecipacoes_lucro_assistente = float(
+    pagamentos_periodo_global.get("antecipacoes_lucro", 0.0)
+)
+
+if st.button(
+    "Assistente",
+    use_container_width=True,
+    type="primary",
+    key="abrir_assistente_financeiro_floating",
+    help="Abrir assistente financeiro",
+):
+    st.session_state.abrir_assistente_agora = True
+    st.rerun()
+
+if st.session_state.get("abrir_assistente_agora", False):
+    st.session_state.abrir_assistente_agora = False
+    abrir_assistente(
+        periodo_label,
+        recebimentos,
+        vendas_aprovadas,
+        despesas_assistente,
+        custos_fixos_assistente,
+        custos_variaveis_assistente,
+        retiradas_assistente,
+        antecipacoes_lucro_assistente,
+    )
+
 # =========================
 # PÁGINA: ADMIN
 # =========================
@@ -7130,12 +8364,187 @@ if st.session_state.pagina == "admin":
     st.markdown('<div class="page-title">⚙️ Painel Administrativo</div>', unsafe_allow_html=True)
     st.markdown('<div class="page-subtitle">Gerencie usuários e configurações do sistema.</div>', unsafe_allow_html=True)
 
-    tab_criar, tab_listar, tab_senha, tab_deletar = st.tabs([
+    tab_clientes, tab_criar, tab_listar, tab_senha, tab_deletar = st.tabs([
+        "🏷️ Clientes",
         "➕ Criar Usuário",
         "📋 Listar Usuários",
         "🔑 Recuperar Senha",
         "🗑️ Deletar Usuário",
     ])
+
+    with tab_clientes:
+        st.markdown("### Cadastro de clientes")
+        st.caption(
+            "Clientes ativos aparecem nos campos de salvar e compartilhar relatório."
+        )
+        col_btn_cliente, _ = st.columns([1, 3])
+        with col_btn_cliente:
+            if st.button(
+                "Adicionar cliente",
+                type="primary",
+                use_container_width=True,
+                key="adicionar_cliente_admin",
+            ):
+                st.session_state.mostrar_novo_cliente = True
+                st.rerun()
+
+        try:
+            clientes_admin = get_clients(include_inactive=True)
+            if clientes_admin:
+                df_clientes = pd.DataFrame(
+                    clientes_admin,
+                    columns=[
+                        "ID",
+                        "Cliente",
+                        "Ativo",
+                        "Sistema",
+                        "Maquininhas",
+                        "Bancos",
+                        "Criado em",
+                    ],
+                )
+                df_clientes["Status"] = df_clientes["Ativo"].map(
+                    {1: "Ativo", 0: "Inativo"}
+                )
+                st.dataframe(
+                    df_clientes[
+                        [
+                            "Cliente",
+                            "Status",
+                            "Sistema",
+                            "Maquininhas",
+                            "Bancos",
+                            "Criado em",
+                        ]
+                    ],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                nomes_clientes = df_clientes["Cliente"].tolist()
+                st.markdown("#### Editar cliente")
+                col_editar_cliente, col_botao_editar_cliente = st.columns([3, 1])
+                with col_editar_cliente:
+                    cliente_editar = st.selectbox(
+                        "Cliente para editar",
+                        nomes_clientes,
+                        key="cliente_editar_admin",
+                    )
+                with col_botao_editar_cliente:
+                    st.write("")
+                    st.write("")
+                    if st.button(
+                        "Editar",
+                        type="secondary",
+                        use_container_width=True,
+                        key="abrir_edicao_cliente_admin",
+                    ):
+                        st.session_state.cliente_edicao_nome = cliente_editar
+                        st.rerun()
+
+                st.markdown("#### Status do cliente")
+                cliente_acao = st.selectbox(
+                    "Alterar status do cliente",
+                    nomes_clientes,
+                    key="cliente_status_admin",
+                )
+                ativo_atual = bool(
+                    df_clientes.loc[
+                        df_clientes["Cliente"] == cliente_acao,
+                        "Ativo",
+                    ].iloc[0]
+                )
+                col_inativar, col_reativar, _ = st.columns([1, 1, 2])
+                with col_inativar:
+                    st.button(
+                        "Inativar",
+                        disabled=not ativo_atual,
+                        use_container_width=True,
+                        key="inativar_cliente_admin",
+                        on_click=set_client_active,
+                        args=(cliente_acao, False),
+                    )
+                with col_reativar:
+                    st.button(
+                        "Reativar",
+                        disabled=ativo_atual,
+                        use_container_width=True,
+                        key="reativar_cliente_admin",
+                        on_click=set_client_active,
+                        args=(cliente_acao, True),
+                    )
+
+                st.markdown("---")
+                st.markdown("#### Excluir cliente")
+                st.caption(
+                    "Use apenas para cadastros de teste ou cliente criado errado. "
+                    "Clientes com relatórios salvos devem ser inativados para "
+                    "preservar o histórico."
+                )
+                relatorios_cliente_acao = count_saved_reports_by_client(
+                    cliente_acao
+                )
+                if relatorios_cliente_acao > 0:
+                    st.warning(
+                        f"Este cliente tem {relatorios_cliente_acao} relatório(s) "
+                        "salvo(s). Para preservar o histórico, ele não pode ser "
+                        "excluído; use Inativar."
+                    )
+                elif st.session_state.cliente_exclusao_pendente != cliente_acao:
+                    if st.button(
+                        "Continuar para excluir cliente",
+                        type="secondary",
+                        use_container_width=True,
+                        key="continuar_excluir_cliente_admin",
+                    ):
+                        st.session_state.cliente_exclusao_pendente = cliente_acao
+                        st.rerun()
+                else:
+                    st.error(
+                        f"Confirmação final para excluir **{cliente_acao}**."
+                    )
+                    confirmacao_cliente = st.text_input(
+                        f'Digite "{cliente_acao}" para confirmar',
+                        key="confirmacao_cliente_exclusao",
+                    )
+                    col_excluir_cliente, col_cancelar_cliente = st.columns(2)
+                    with col_excluir_cliente:
+                        if st.button(
+                            "Excluir definitivamente",
+                            type="primary",
+                            use_container_width=True,
+                            key="excluir_cliente_definitivo",
+                        ):
+                            if confirmacao_cliente != cliente_acao:
+                                st.error(
+                                    "O nome digitado não corresponde ao cliente."
+                                )
+                            elif delete_client(cliente_acao):
+                                st.session_state.cliente_exclusao_pendente = None
+                                st.success(f"Cliente '{cliente_acao}' excluído.")
+                                st.rerun()
+                            else:
+                                st.error(
+                                    "Não foi possível excluir. Verifique se há "
+                                    "relatórios salvos para este cliente."
+                                )
+                    with col_cancelar_cliente:
+                        if st.button(
+                            "Cancelar exclusão",
+                            use_container_width=True,
+                            key="cancelar_exclusao_cliente",
+                        ):
+                            st.session_state.cliente_exclusao_pendente = None
+                            st.rerun()
+                st.info(
+                    f"📊 Total: {len(df_clientes)} cliente(s), "
+                    f"{int(df_clientes['Ativo'].sum())} ativo(s)."
+                )
+            else:
+                st.info("Nenhum cliente cadastrado ainda.")
+        except Exception as e:
+            logger.exception("Erro ao gerenciar clientes")
+            st.error(f"❌ Erro: {str(e)}")
 
     with tab_criar:
         st.markdown("### Criar novo usuário")
@@ -7394,27 +8803,6 @@ elif st.session_state.pagina == "visao":
     )
     resultado_periodo = resultado_operacional_periodo
     resultado_antes_retiradas_periodo = recebimentos_periodo - despesas_periodo
-
-    _, topo_assistente = st.columns([4, 1.15])
-    with topo_assistente:
-        st.markdown('<div class="assistant-top-button">', unsafe_allow_html=True)
-        if st.button(
-            "💬 Assistente",
-            use_container_width=True,
-            type="primary",
-            key="abrir_assistente_financeiro_topo",
-        ):
-            abrir_assistente(
-                periodo_label,
-                recebimentos_periodo,
-                vendas_aprovadas_periodo,
-                despesas_periodo,
-                custos_fixos_periodo,
-                custos_variaveis_periodo,
-                retiradas_periodo,
-                antecipacoes_lucro_periodo,
-            )
-        st.markdown('</div>', unsafe_allow_html=True)
 
     k1, k2, k3, k4 = st.columns(4)
     with k1:
@@ -7954,14 +9342,32 @@ elif st.session_state.pagina == "fornecedores":
 # PÁGINA: RELATÓRIOS SALVOS
 # =========================
 elif st.session_state.pagina == "relatorios":
-    st.markdown('<div class="page-title">Relatórios salvos</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="page-subtitle">Histórico interno por cliente, período e fechamento.</div>',
-        unsafe_allow_html=True,
-    )
+    topo_relatorios, acao_compartilhar, acao_salvar = st.columns([1, .26, .24])
+    with topo_relatorios:
+        st.markdown('<div class="page-title">Relatórios salvos</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="page-subtitle">Histórico interno por cliente, período e fechamento.</div>',
+            unsafe_allow_html=True,
+        )
+    with acao_compartilhar:
+        st.markdown("<div style='height:1.1rem'></div>", unsafe_allow_html=True)
+        st.button(
+            "🔗 Compartilhar",
+            use_container_width=True,
+            key="btn_share_reports_page",
+            on_click=solicitar_compartilhamento,
+        )
+    with acao_salvar:
+        st.markdown("<div style='height:1.1rem'></div>", unsafe_allow_html=True)
+        st.button(
+            "💾 Salvar relatório",
+            use_container_width=True,
+            key="btn_save_report_page",
+            on_click=solicitar_salvar_relatorio,
+        )
     relatorios_salvos = list_saved_reports(user.id)
     if not relatorios_salvos:
-        st.info("Nenhum relatório salvo ainda. Use o botão Salvar Relatório no menu lateral.")
+        st.info("Nenhum relatório salvo ainda. Use o botão Salvar relatório nesta página.")
     else:
         clientes = sorted({r[1] for r in relatorios_salvos})
         cliente_filtro = st.selectbox(
@@ -8190,6 +9596,54 @@ elif st.session_state.pagina == "comparativo":
                 )
                 return fig
 
+            def grafico_linha_mensal(
+                titulo: str,
+                coluna: str,
+                cor: str,
+                cores_por_valor: bool = False,
+            ) -> go.Figure:
+                valores = df_filtrado_comp[coluna]
+                marcador = (
+                    ["#2FC792" if valor >= 0 else "#F09595" for valor in valores]
+                    if cores_por_valor else cor
+                )
+                fig = go.Figure()
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_filtrado_comp["periodo"],
+                        y=valores,
+                        mode="lines+markers+text",
+                        line=dict(color=cor, width=3),
+                        marker=dict(size=9, color=marcador),
+                        text=[
+                            fmt_brl(valor, sinal=(coluna == "resultado"))
+                            for valor in valores
+                        ],
+                        textposition="top center",
+                    )
+                )
+                fig.update_layout(
+                    title=dict(
+                        text=titulo,
+                        font=dict(color="#E2E8F0", size=15),
+                    ),
+                    height=310,
+                    margin=dict(l=0, r=0, t=42, b=0),
+                    paper_bgcolor="#11112A",
+                    plot_bgcolor="#11112A",
+                    showlegend=False,
+                    xaxis=dict(
+                        showgrid=False,
+                        tickfont=dict(color="#A0A0C0"),
+                    ),
+                    yaxis=dict(
+                        showgrid=True,
+                        gridcolor="#1E1E3A",
+                        tickfont=dict(color="#4A4A7A"),
+                    ),
+                )
+                return fig
+
             def grafico_categorias_mensal(
                 df_base: pd.DataFrame,
                 categoria: str,
@@ -8223,6 +9677,53 @@ elif st.session_state.pagina == "comparativo":
                     title=dict(text=titulo, font=dict(color="#E2E8F0", size=15)),
                     height=430,
                     barmode="stack",
+                    margin=dict(l=0, r=0, t=42, b=0),
+                    paper_bgcolor="#11112A",
+                    plot_bgcolor="#11112A",
+                    legend=dict(font=dict(color="#CFD1DF")),
+                    xaxis=dict(showgrid=False, tickfont=dict(color="#A0A0C0")),
+                    yaxis=dict(showgrid=True, gridcolor="#1E1E3A", tickfont=dict(color="#4A4A7A")),
+                )
+                return fig
+
+            def grafico_linhas_categorias_mensal(
+                df_base: pd.DataFrame,
+                categoria: str,
+                titulo: str,
+            ) -> Optional[go.Figure]:
+                if df_base.empty:
+                    return None
+                totais_categoria = (
+                    df_base.groupby(categoria, as_index=False)["valor"]
+                    .sum()
+                    .sort_values("valor", ascending=False)
+                )
+                categorias_top = totais_categoria.head(10)[categoria].tolist()
+                df_plot = df_base[df_base[categoria].isin(categorias_top)].copy()
+                if df_plot.empty:
+                    return None
+                fig = go.Figure()
+                for nome_categoria, grupo in df_plot.groupby(categoria):
+                    grupo = (
+                        grupo.groupby(["periodo", "inicio"], as_index=False)["valor"]
+                        .sum()
+                        .sort_values("inicio")
+                    )
+                    fig.add_trace(
+                        go.Scatter(
+                            x=grupo["periodo"],
+                            y=grupo["valor"],
+                            mode="lines+markers",
+                            name=str(nome_categoria),
+                            hovertemplate=(
+                                f"{nome_categoria}<br>%{{x}}<br>"
+                                "R$ %{y:,.2f}<extra></extra>"
+                            ),
+                        )
+                    )
+                fig.update_layout(
+                    title=dict(text=titulo, font=dict(color="#E2E8F0", size=15)),
+                    height=430,
                     margin=dict(l=0, r=0, t=42, b=0),
                     paper_bgcolor="#11112A",
                     plot_bgcolor="#11112A",
@@ -8521,11 +10022,10 @@ elif st.session_state.pagina == "comparativo":
                         for _, row in df_filtrado_comp.iterrows()
                     ])
                 st.plotly_chart(
-                    grafico_categorias_mensal(
+                    grafico_linhas_categorias_mensal(
                         df_despesas_comp,
                         "grupo",
-                        "Despesas por tipo",
-                        "#F09595",
+                        "Evolução das despesas por tipo",
                     ),
                     use_container_width=True,
                     config={"displayModeBar": False},
@@ -8533,7 +10033,7 @@ elif st.session_state.pagina == "comparativo":
 
             with tab_comp_receb:
                 st.plotly_chart(
-                    grafico_barra_mensal(
+                    grafico_linha_mensal(
                         "Recebimentos",
                         "recebimentos",
                         "#2FC792",
@@ -8543,7 +10043,7 @@ elif st.session_state.pagina == "comparativo":
                 )
             with tab_comp_resultado:
                 st.plotly_chart(
-                    grafico_barra_mensal(
+                    grafico_linha_mensal(
                         "Resultado",
                         "resultado",
                         "#7167DC",
@@ -8747,7 +10247,7 @@ elif st.session_state.pagina == "detalhes":
             df_rec = (
                 df_conta_azul_receber_periodo.copy()
                 if usar_recebimentos_conta_azul
-                else df_orcamentos_periodo.copy()
+                else df_amigotech_receber_periodo.copy()
             )
             if (
                 usar_recebimentos_conta_azul
@@ -9209,7 +10709,11 @@ elif st.session_state.pagina == "detalhes":
             if (
                 "servico_vendido" in base_recebimentos_belle.columns
                 and normalizar_texto(fonte_vendas_ativa)
-                in {"orcamentos do clinicorp", "vendas do conta azul"}
+                in {
+                    "orcamentos do clinicorp",
+                    "vendas do conta azul",
+                    "vendas do amigotech",
+                }
             ):
                 fonte_vendas_norm = normalizar_texto(fonte_vendas_ativa)
                 vendas_por_servico = base_recebimentos_belle.copy()
@@ -9232,10 +10736,17 @@ elif st.session_state.pagina == "detalhes":
                             tipo_item_servico,
                         )
                     ]
-                else:
+                elif fonte_vendas_norm == "orcamentos do clinicorp":
                     vendas_por_servico["servico_vendido"] = (
                         vendas_por_servico["servico_vendido"]
                         .apply(agrupar_procedimento_clinicorp)
+                    )
+                else:
+                    vendas_por_servico["servico_vendido"] = (
+                        vendas_por_servico["servico_vendido"]
+                        .str.replace(r"^\s*\d+\s*-\s*", "", regex=True)
+                        .str.strip()
+                        .replace("", "Serviço não identificado")
                     )
                 coluna_valor_servico = (
                     "valor_liquido"
@@ -9246,11 +10757,18 @@ elif st.session_state.pagina == "detalhes":
                     vendas_por_servico[coluna_valor_servico],
                     errors="coerce",
                 ).fillna(0).abs()
+                if "quantidade_vendas" in vendas_por_servico.columns:
+                    vendas_por_servico["quantidade_card_servico"] = pd.to_numeric(
+                        vendas_por_servico["quantidade_vendas"],
+                        errors="coerce",
+                    ).fillna(1)
+                else:
+                    vendas_por_servico["quantidade_card_servico"] = 1
                 resumo_servicos = (
                     vendas_por_servico.groupby("servico_vendido", as_index=False)
                     .agg(
                         valor=("valor_card_servico", "sum"),
-                        quantidade=("valor_card_servico", "count"),
+                        quantidade=("quantidade_card_servico", "sum"),
                     )
                     .sort_values("valor", ascending=False)
                 )
@@ -9296,6 +10814,8 @@ elif st.session_state.pagina == "detalhes":
                             "valor": float(resumo_servicos["valor"].sum()),
                             "quantidade": int(resumo_servicos["quantidade"].sum()),
                         })
+                    elif fonte_vendas_norm == "vendas do amigotech":
+                        cards_servicos = resumo_servicos.head(10).to_dict("records")
                     else:
                         cards_servicos = resumo_servicos.to_dict("records")
                     for inicio_servicos in range(0, len(cards_servicos), 4):
@@ -9342,7 +10862,11 @@ elif st.session_state.pagina == "detalhes":
             if (
                 "servico_vendido" in vendas_tabela.columns
                 and normalizar_texto(fonte_vendas_ativa)
-                in {"orcamentos do clinicorp", "vendas do conta azul"}
+                in {
+                    "orcamentos do clinicorp",
+                    "vendas do conta azul",
+                    "vendas do amigotech",
+                }
             ):
                 fonte_vendas_norm = normalizar_texto(fonte_vendas_ativa)
                 servicos_tabela = (
@@ -9370,7 +10894,7 @@ elif st.session_state.pagina == "detalhes":
                         "TIRZEPATIDA",
                         "Outros",
                     ]
-                else:
+                elif fonte_vendas_norm == "orcamentos do clinicorp":
                     vendas_tabela["tipo_servico_card"] = (
                         servicos_tabela.apply(agrupar_procedimento_clinicorp)
                     )
@@ -9384,15 +10908,39 @@ elif st.session_state.pagina == "detalhes":
                             .tolist()
                         ),
                     ]
+                else:
+                    vendas_tabela["tipo_servico_card"] = (
+                        servicos_tabela
+                        .str.replace(r"^\s*\d+\s*-\s*", "", regex=True)
+                        .str.strip()
+                        .replace("", "Serviço não identificado")
+                    )
+                    servicos_top = (
+                        vendas_tabela.groupby("tipo_servico_card")["valor"]
+                        .sum()
+                        .sort_values(ascending=False)
+                        .head(10)
+                        .index
+                        .tolist()
+                    )
+                    opcoes_tipo_servico = ["Todos", *servicos_top, "Outros"]
                 filtro_tipo_servico = st.selectbox(
                     "Tipo de serviço",
                     opcoes_tipo_servico,
                     key="filtro_tipo_servico_vendas",
                 )
                 if filtro_tipo_servico != "Todos":
-                    vendas_tabela = vendas_tabela[
-                        vendas_tabela["tipo_servico_card"] == filtro_tipo_servico
-                    ].copy()
+                    if (
+                        fonte_vendas_norm == "vendas do amigotech"
+                        and filtro_tipo_servico == "Outros"
+                    ):
+                        vendas_tabela = vendas_tabela[
+                            ~vendas_tabela["tipo_servico_card"].isin(servicos_top)
+                        ].copy()
+                    else:
+                        vendas_tabela = vendas_tabela[
+                            vendas_tabela["tipo_servico_card"] == filtro_tipo_servico
+                        ].copy()
                 st.markdown(
                     f'<div style="text-align:right;font-size:0.78rem;color:#4A4A7A;margin-bottom:0.5rem">{len(vendas_tabela)} venda(s)</div>',
                     unsafe_allow_html=True,
@@ -9876,51 +11424,8 @@ elif st.session_state.pagina == "saldo":
             not st.session_state.share_mode
             and st.button("➕  Nova conta", type="primary")
         ):
-            st.session_state.mostrar_nova_conta = not st.session_state.mostrar_nova_conta
-
-    if st.session_state.mostrar_nova_conta and not st.session_state.share_mode:
-        with st.container():
-            st.markdown("""
-            <div style="background:#11112A;border:1px solid #1E1E3A;border-radius:12px;
-                        padding:1.2rem 1.4rem;margin-bottom:1rem">
-                <div style="font-size:0.85rem;font-weight:600;color:#E2E8F0;margin-bottom:0.8rem">
-                    Nova conta ou investimento</div>
-            </div>""", unsafe_allow_html=True)
-            nc1, nc2 = st.columns(2)
-            nc_tipo, nc3, nc4 = st.columns([1.2, 1, 1])
-            with nc1: nova_nome   = st.text_input("Nome da conta", placeholder="Ex: Conta Corrente")
-            with nc2: nova_banco  = st.text_input("Instituição",         placeholder="Ex: Sicoob")
-            with nc_tipo:
-                novo_tipo_conta = st.selectbox(
-                    "Tipo",
-                    ["Conta bancária", "Investimento"],
-                )
-            with nc3: nova_inicial = st.number_input("Saldo Inicial (R$)", value=0.0, format="%.2f")
-            with nc4: nova_final   = st.number_input("Saldo Final (R$)", value=0.0, format="%.2f")
-            cb1, cb2, _ = st.columns([1, 1, 4])
-            with cb1:
-                if st.button("Salvar conta", type="primary"):
-                    if not nova_nome or not nova_banco:
-                        st.error("❌ Preencha nome e banco.")
-                    else:
-                        try:
-                            add_conta(
-                                user.id,
-                                nova_nome,
-                                nova_banco,
-                                nova_inicial,
-                                nova_final,
-                                novo_tipo_conta,
-                            )
-                            st.session_state.mostrar_nova_conta = False
-                            st.success("✅ Conta adicionada!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Erro: {str(e)}")
-            with cb2:
-                if st.button("Cancelar"):
-                    st.session_state.mostrar_nova_conta = False
-                    st.rerun()
+            st.session_state.mostrar_nova_conta = True
+            st.rerun()
 
     if st.session_state.share_mode:
         contas = st.session_state.share_accounts
