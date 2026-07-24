@@ -24,8 +24,7 @@ from database import (
     add_conta, get_contas, create_shared_report,
     get_shared_report, list_shared_reports, revoke_shared_report,
     verify_admin_password, create_password_reset_code, reset_password_with_code,
-    bootstrap_admin_from_env, seed_default_clients, create_client, get_clients,
-    update_client, set_client_active, count_saved_reports_by_client, delete_client
+    bootstrap_admin_from_env
 )
 
 # =========================
@@ -70,6 +69,242 @@ def _garantir_tabela_relatorios_salvos():
     """)
     conn.commit()
     conn.close()
+
+
+def _adapt_sql_compat(sql: str) -> str:
+    if hasattr(database_module, "_adapt_sql"):
+        return database_module._adapt_sql(sql)
+    return sql
+
+
+def _execute_compat(cursor, sql: str, params=()):
+    cursor.execute(_adapt_sql_compat(sql), params)
+
+
+def _garantir_tabela_clientes_compat():
+    conn = _connect_db_compat()
+    cursor = conn.cursor()
+    _execute_compat(
+        cursor,
+        """
+        CREATE TABLE IF NOT EXISTS clients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            active INTEGER DEFAULT 1,
+            main_system TEXT DEFAULT 'Misto',
+            machine_aliases TEXT DEFAULT '',
+            bank_aliases TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+    )
+    conn.commit()
+    conn.close()
+
+
+def _seed_default_clients_fallback(client_names):
+    _garantir_tabela_clientes_compat()
+    conn = _connect_db_compat()
+    cursor = conn.cursor()
+    for name in client_names:
+        client_name = str(name).strip()
+        if not client_name:
+            continue
+        try:
+            _execute_compat(
+                cursor,
+                """
+                INSERT INTO clients (name, active) VALUES (?, 1)
+                ON CONFLICT(name) DO NOTHING
+                """,
+                (client_name,),
+            )
+        except Exception:
+            pass
+    conn.commit()
+    conn.close()
+
+
+def _create_client_fallback(
+    name,
+    main_system="Misto",
+    machine_aliases="",
+    bank_aliases="",
+):
+    _garantir_tabela_clientes_compat()
+    client_name = str(name or "").strip()
+    if not client_name:
+        return False
+    conn = _connect_db_compat()
+    cursor = conn.cursor()
+    try:
+        _execute_compat(
+            cursor,
+            """
+            INSERT INTO clients (
+                name, active, main_system, machine_aliases, bank_aliases
+            )
+            VALUES (?, 1, ?, ?, ?)
+            """,
+            (
+                client_name,
+                str(main_system or "Misto").strip() or "Misto",
+                str(machine_aliases or "").strip(),
+                str(bank_aliases or "").strip(),
+            ),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def _get_clients_fallback(include_inactive=False):
+    _garantir_tabela_clientes_compat()
+    conn = _connect_db_compat()
+    cursor = conn.cursor()
+    if include_inactive:
+        _execute_compat(
+            cursor,
+            """
+            SELECT id, name, active, main_system, machine_aliases,
+                   bank_aliases, created_at
+            FROM clients
+            ORDER BY name
+            """,
+        )
+    else:
+        _execute_compat(
+            cursor,
+            """
+            SELECT id, name, active, main_system, machine_aliases,
+                   bank_aliases, created_at
+            FROM clients
+            WHERE active = 1
+            ORDER BY name
+            """,
+        )
+    clients = cursor.fetchall()
+    conn.close()
+    return clients
+
+
+def _update_client_fallback(
+    original_name,
+    name,
+    active=True,
+    main_system="Misto",
+    machine_aliases="",
+    bank_aliases="",
+):
+    _garantir_tabela_clientes_compat()
+    original_client_name = str(original_name or "").strip()
+    client_name = str(name or "").strip()
+    if not original_client_name or not client_name:
+        return False
+    conn = _connect_db_compat()
+    cursor = conn.cursor()
+    try:
+        _execute_compat(
+            cursor,
+            """
+            UPDATE clients
+            SET name = ?, active = ?, main_system = ?,
+                machine_aliases = ?, bank_aliases = ?
+            WHERE name = ?
+            """,
+            (
+                client_name,
+                1 if active else 0,
+                str(main_system or "Misto").strip() or "Misto",
+                str(machine_aliases or "").strip(),
+                str(bank_aliases or "").strip(),
+                original_client_name,
+            ),
+        )
+        changed = cursor.rowcount > 0
+        if changed and client_name != original_client_name:
+            _execute_compat(
+                cursor,
+                "UPDATE saved_reports SET client_name = ? WHERE client_name = ?",
+                (client_name, original_client_name),
+            )
+        conn.commit()
+        return changed
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def _set_client_active_fallback(name, active=True):
+    _garantir_tabela_clientes_compat()
+    conn = _connect_db_compat()
+    cursor = conn.cursor()
+    _execute_compat(
+        cursor,
+        "UPDATE clients SET active = ? WHERE name = ?",
+        (1 if active else 0, str(name or "").strip()),
+    )
+    changed = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return changed
+
+
+def _count_saved_reports_by_client_fallback(name):
+    _garantir_tabela_relatorios_salvos()
+    conn = _connect_db_compat()
+    cursor = conn.cursor()
+    _execute_compat(
+        cursor,
+        "SELECT COUNT(*) FROM saved_reports WHERE client_name = ?",
+        (str(name or "").strip(),),
+    )
+    total = cursor.fetchone()[0]
+    conn.close()
+    return int(total or 0)
+
+
+def _delete_client_fallback(name):
+    _garantir_tabela_clientes_compat()
+    client_name = str(name or "").strip()
+    if not client_name or count_saved_reports_by_client(client_name) > 0:
+        return False
+    conn = _connect_db_compat()
+    cursor = conn.cursor()
+    _execute_compat(
+        cursor,
+        "DELETE FROM clients WHERE name = ?",
+        (client_name,),
+    )
+    changed = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return changed
+
+
+seed_default_clients = getattr(
+    database_module,
+    "seed_default_clients",
+    _seed_default_clients_fallback,
+)
+create_client = getattr(database_module, "create_client", _create_client_fallback)
+get_clients = getattr(database_module, "get_clients", _get_clients_fallback)
+update_client = getattr(database_module, "update_client", _update_client_fallback)
+set_client_active = getattr(
+    database_module,
+    "set_client_active",
+    _set_client_active_fallback,
+)
+count_saved_reports_by_client = getattr(
+    database_module,
+    "count_saved_reports_by_client",
+    _count_saved_reports_by_client_fallback,
+)
+delete_client = getattr(database_module, "delete_client", _delete_client_fallback)
 
 
 def _create_saved_report_fallback(
