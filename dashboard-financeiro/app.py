@@ -488,6 +488,101 @@ class User:
     def initials(self) -> str:
         return self.username[0].upper() if self.username else "?"
 
+
+def render_dashboard_loader():
+    st.markdown(
+        """
+        <style>
+        .initial-loader {
+            position: fixed;
+            inset: 0;
+            z-index: 999999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background:
+                radial-gradient(circle at 20% 25%, rgba(123, 97, 255, .24), transparent 26rem),
+                radial-gradient(circle at 82% 72%, rgba(80, 145, 255, .18), transparent 24rem),
+                #0b0b18;
+            pointer-events: none;
+            animation: initialLoaderFade .45s ease 3.2s forwards;
+        }
+        .initial-loader-card {
+            width: min(25rem, calc(100vw - 2rem));
+            padding: 2rem;
+            border: 1px solid rgba(139, 128, 255, .35);
+            border-radius: 1.25rem;
+            background: rgba(18, 18, 38, .9);
+            box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, .4);
+            text-align: center;
+        }
+        .initial-loader-icon {
+            width: 3.25rem;
+            height: 3.25rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1rem;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6f63e8, #4d91ff);
+            color: #fff;
+            font-size: 1.5rem;
+            box-shadow: 0 0 2.5rem rgba(111, 99, 232, .42);
+            animation: initialLoaderPulse 1.2s ease-in-out infinite;
+        }
+        .initial-loader-title {
+            color: #f5f7ff;
+            font-size: 1.35rem;
+            font-weight: 850;
+            letter-spacing: 0;
+            margin-bottom: .35rem;
+        }
+        .initial-loader-subtitle {
+            color: #a7aac9;
+            font-size: .98rem;
+            font-weight: 600;
+            margin-bottom: 1.25rem;
+        }
+        .initial-loader-bar {
+            position: relative;
+            height: .45rem;
+            overflow: hidden;
+            border-radius: 99rem;
+            background: rgba(255, 255, 255, .09);
+        }
+        .initial-loader-bar span {
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 46%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #7b61ff, #4d91ff);
+            animation: initialLoaderSlide 1.1s ease-in-out infinite;
+        }
+        @keyframes initialLoaderSlide {
+            0% { transform: translateX(-110%); }
+            55% { transform: translateX(70%); }
+            100% { transform: translateX(230%); }
+        }
+        @keyframes initialLoaderPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        @keyframes initialLoaderFade {
+            to { opacity: 0; visibility: hidden; }
+        }
+        </style>
+        <div class="initial-loader">
+            <div class="initial-loader-card">
+                <div class="initial-loader-icon">💰</div>
+                <div class="initial-loader-title">Carregando dashboard</div>
+                <div class="initial-loader-subtitle">Aplicando arquivos e atualizando indicadores...</div>
+                <div class="initial-loader-bar"><span></span></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # =========================
 # CONFIG
 # =========================
@@ -497,6 +592,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+if st.session_state.get("carregando_dashboard"):
+    render_dashboard_loader()
+    st.session_state.carregando_dashboard = False
 
 criar_tabelas()
 seed_default_clients(DEFAULT_CLIENTES_RELATORIO)
@@ -570,6 +669,25 @@ st.markdown(
         color: #ffffff !important;
         background: #1a1d31 !important;
         border-color: #3a3e63 !important;
+    }
+    section[data-testid="stSidebar"] [class*="st-key-nav_"] button,
+    section[data-testid="stSidebar"] .st-key-btn_upload button,
+    section[data-testid="stSidebar"] .st-key-sidebar_logout button {
+        justify-content: center !important;
+        min-height: 44px !important;
+        padding: .55rem .8rem !important;
+        color: #e7e9f3 !important;
+        background: transparent !important;
+        border: 1px solid transparent !important;
+        box-shadow: none !important;
+    }
+    section[data-testid="stSidebar"] [class*="st-key-nav_"] button:hover,
+    section[data-testid="stSidebar"] .st-key-btn_upload button:hover,
+    section[data-testid="stSidebar"] .st-key-sidebar_logout button:hover {
+        color: #ffffff !important;
+        background: rgba(113, 103, 220, .08) !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
     }
     section[data-testid="stSidebar"] input,
     section[data-testid="stSidebar"] [data-baseweb="input"],
@@ -761,6 +879,33 @@ st.markdown(
         overflow: hidden !important;
         border: 1px solid rgba(160, 165, 255, .28) !important;
         box-shadow: 0 24px 70px rgba(0, 0, 0, .48) !important;
+    }
+    div[role="dialog"]:has(.assistant-chat-panel) button[aria-label="Close"] {
+        display: none !important;
+    }
+    .assistant-close-row {
+        height: 32px;
+        margin-bottom: .35rem;
+    }
+    .st-key-fechar_assistente_financeiro {
+        position: absolute !important;
+        top: 14px !important;
+        right: 14px !important;
+        z-index: 5 !important;
+        width: 34px !important;
+    }
+    .st-key-fechar_assistente_financeiro button {
+        width: 34px !important;
+        height: 34px !important;
+        min-height: 34px !important;
+        padding: 0 !important;
+        color: #f3f5ff !important;
+        background: rgba(17, 19, 38, .92) !important;
+        border: 1px solid rgba(160, 165, 255, .32) !important;
+        border-radius: 10px !important;
+        font-size: 1rem !important;
+        line-height: 1 !important;
+        box-shadow: none !important;
     }
     div[role="dialog"]:has(.assistant-chat-panel) > div {
         max-height: min(720px, calc(100vh - 132px)) !important;
@@ -2697,6 +2842,10 @@ def abrir_assistente(
     antecipacoes_lucro_periodo=0.0,
 ):
     st.markdown('<div class="assistant-chat-panel"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="assistant-close-row"></div>', unsafe_allow_html=True)
+    if st.button("×", key="fechar_assistente_financeiro", help="Fechar assistente"):
+        st.session_state.abrir_assistente_agora = False
+        st.rerun()
     st.markdown(
         """
         <div class="assistant-welcome-card">
@@ -5974,78 +6123,146 @@ def processar_multiplos_arquivos(
     processador,
     *args,
 ) -> pd.DataFrame:
-    quadros = []
-    for arquivo in arquivos or []:
-        if arquivo.size > 10 * 1024 * 1024:
-            st.error(f"❌ {arquivo.name}: máximo de 10 MB por arquivo.")
-            continue
-        quadro = processador(arquivo, *args)
-        if quadro is not None and not quadro.empty:
-            quadro = quadro.copy()
-            quadro["_arquivo_origem"] = arquivo.name
-            quadros.append(quadro)
-
-    if not quadros:
+    arquivos_lista = list(arquivos or [])
+    if not arquivos_lista:
         return pd.DataFrame()
 
-    combinado = pd.concat(quadros, ignore_index=True, sort=False)
-    nome_processador = getattr(processador, "__name__", "")
-    if nome_processador in {
-        "processar_bancos",
-        "processar_excel_bancos",
-    }:
-        return combinado.reset_index(drop=True)
-    if nome_processador == "processar_infinity_pay":
-        relatorio_detalhado = (
-            combinado.get(
-                "_relatorio_maquininha_detalhado",
-                pd.Series(False, index=combinado.index),
-            )
-            .fillna(False)
-            .astype(bool)
-        )
-        if relatorio_detalhado.any():
-            texto_maquininha = (
-                combinado.get("memo", pd.Series("", index=combinado.index))
-                .fillna("").map(normalizar_texto)
-                + " "
-                + combinado.get("tipo_transacao", pd.Series("", index=combinado.index))
-                .fillna("").map(normalizar_texto)
-                + " "
-                + combinado.get("detalhe", pd.Series("", index=combinado.index))
-                .fillna("").map(normalizar_texto)
-                + " "
-                + combinado.get("_arquivo_origem", pd.Series("", index=combinado.index))
-                .fillna("").map(normalizar_texto)
-            )
-            valores_maquininha = pd.to_numeric(
-                combinado.get("valor", 0),
-                errors="coerce",
-            ).fillna(0)
-            deposito_statement = (
-                ~relatorio_detalhado
-                & (valores_maquininha > 0)
-                & texto_maquininha.str.contains(
-                    r"deposito\s+de\s+vendas|dep[oó]sito\s+de\s+vendas|"
-                    r"deposito\s+infinitepay|dep[oó]sito\s+infinitepay|"
-                    r"statements?",
-                    regex=True,
-                )
-            )
-            combinado = combinado[~deposito_statement].copy()
-        return combinado.reset_index(drop=True)
+    total_arquivos = len(arquivos_lista)
+    texto_arquivos = "arquivo" if total_arquivos == 1 else "arquivos"
+    loader_processamento = st.empty()
+    loader_processamento.markdown(
+        f"""
+        <style>
+        .processing-loader {{
+            position: fixed;
+            inset: 0;
+            z-index: 999998;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(8, 8, 18, .74);
+            backdrop-filter: blur(5px);
+        }}
+        .processing-loader-card {{
+            width: min(26rem, calc(100vw - 2rem));
+            padding: 1.75rem;
+            border-radius: 1.15rem;
+            border: 1px solid rgba(139, 128, 255, .42);
+            background: rgba(18, 18, 38, .96);
+            box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, .45);
+            text-align: center;
+        }}
+        .processing-loader-spinner {{
+            width: 2.8rem;
+            height: 2.8rem;
+            margin: 0 auto 1rem;
+            border-radius: 50%;
+            border: .22rem solid rgba(255, 255, 255, .12);
+            border-top-color: #7b61ff;
+            border-right-color: #4d91ff;
+            animation: processingLoaderSpin .8s linear infinite;
+        }}
+        .processing-loader-title {{
+            color: #f5f7ff;
+            font-size: 1.15rem;
+            font-weight: 850;
+            margin-bottom: .35rem;
+        }}
+        .processing-loader-subtitle {{
+            color: #a7aac9;
+            font-size: .92rem;
+            font-weight: 600;
+        }}
+        @keyframes processingLoaderSpin {{
+            to {{ transform: rotate(360deg); }}
+        }}
+        </style>
+        <div class="processing-loader">
+            <div class="processing-loader-card">
+                <div class="processing-loader-spinner"></div>
+                <div class="processing-loader-title">Lendo {total_arquivos} {texto_arquivos}</div>
+                <div class="processing-loader-subtitle">Importando e organizando os dados financeiros...</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    colunas_deduplicacao = [
-        coluna
-        for coluna in combinado.columns
-        if coluna != "_arquivo_origem"
-    ]
-    if colunas_deduplicacao:
-        combinado = combinado.drop_duplicates(
-            subset=colunas_deduplicacao,
-            keep="last",
-        )
-    return combinado.reset_index(drop=True)
+    quadros = []
+    try:
+        for arquivo in arquivos_lista:
+            if arquivo.size > 10 * 1024 * 1024:
+                st.error(f"❌ {arquivo.name}: máximo de 10 MB por arquivo.")
+                continue
+            quadro = processador(arquivo, *args)
+            if quadro is not None and not quadro.empty:
+                quadro = quadro.copy()
+                quadro["_arquivo_origem"] = arquivo.name
+                quadros.append(quadro)
+
+        if not quadros:
+            return pd.DataFrame()
+
+        combinado = pd.concat(quadros, ignore_index=True, sort=False)
+        nome_processador = getattr(processador, "__name__", "")
+        if nome_processador in {
+            "processar_bancos",
+            "processar_excel_bancos",
+        }:
+            return combinado.reset_index(drop=True)
+        if nome_processador == "processar_infinity_pay":
+            relatorio_detalhado = (
+                combinado.get(
+                    "_relatorio_maquininha_detalhado",
+                    pd.Series(False, index=combinado.index),
+                )
+                .fillna(False)
+                .astype(bool)
+            )
+            if relatorio_detalhado.any():
+                texto_maquininha = (
+                    combinado.get("memo", pd.Series("", index=combinado.index))
+                    .fillna("").map(normalizar_texto)
+                    + " "
+                    + combinado.get("tipo_transacao", pd.Series("", index=combinado.index))
+                    .fillna("").map(normalizar_texto)
+                    + " "
+                    + combinado.get("detalhe", pd.Series("", index=combinado.index))
+                    .fillna("").map(normalizar_texto)
+                    + " "
+                    + combinado.get("_arquivo_origem", pd.Series("", index=combinado.index))
+                    .fillna("").map(normalizar_texto)
+                )
+                valores_maquininha = pd.to_numeric(
+                    combinado.get("valor", 0),
+                    errors="coerce",
+                ).fillna(0)
+                deposito_statement = (
+                    ~relatorio_detalhado
+                    & (valores_maquininha > 0)
+                    & texto_maquininha.str.contains(
+                        r"deposito\s+de\s+vendas|dep[oó]sito\s+de\s+vendas|"
+                        r"deposito\s+infinitepay|dep[oó]sito\s+infinitepay|"
+                        r"statements?",
+                        regex=True,
+                    )
+                )
+                combinado = combinado[~deposito_statement].copy()
+            return combinado.reset_index(drop=True)
+
+        colunas_deduplicacao = [
+            coluna
+            for coluna in combinado.columns
+            if coluna != "_arquivo_origem"
+        ]
+        if colunas_deduplicacao:
+            combinado = combinado.drop_duplicates(
+                subset=colunas_deduplicacao,
+                keep="last",
+            )
+        return combinado.reset_index(drop=True)
+    finally:
+        loader_processamento.empty()
 
 
 def dataframe_para_json(df: Optional[pd.DataFrame]) -> Optional[str]:
@@ -6593,9 +6810,9 @@ with st.sidebar:
         }}
         section[data-testid="stSidebar"] .st-key-{chave_ativa_sidebar} button {{
             color: #ffffff !important;
-            background: linear-gradient(135deg, rgba(113,103,220,.40), rgba(79,140,255,.26)) !important;
-            border-color: rgba(160,165,255,.46) !important;
-            box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 10px 24px rgba(0,0,0,.20) !important;
+            background: rgba(113,103,220,.08) !important;
+            border-color: transparent !important;
+            box-shadow: none !important;
             font-weight: 800 !important;
         }}
         </style>
@@ -6666,7 +6883,12 @@ with st.sidebar:
 
     st.markdown("---")
     if not st.session_state.share_mode:
-        st.button("🚪 Sair", use_container_width=True, on_click=sair_do_app)
+        st.button(
+            "🚪 Sair",
+            use_container_width=True,
+            key="sidebar_logout",
+            on_click=sair_do_app,
+        )
 
 if st.session_state.mostrar_compartilhamento:
     st.session_state.mostrar_compartilhamento = False
@@ -6924,6 +7146,12 @@ if st.session_state.mostrar_nova_conta and not st.session_state.share_mode:
     st.session_state.mostrar_nova_conta = False
     abrir_nova_conta()
 
+
+def fechar_upload_e_carregar_dashboard():
+    st.session_state.mostrar_modal_upload = False
+    st.session_state.carregando_dashboard = True
+
+
 # =========================
 # MODAL DE UPLOAD
 # =========================
@@ -6977,7 +7205,7 @@ if st.session_state.mostrar_modal_upload:
                 "cliente, clique em Limpar dados antes de enviar novos arquivos."
             )
 
-        with st.expander("🟣 Belle Software", expanded=True):
+        with st.expander("🟣 Belle Software", expanded=False):
             belle_receber_tab, belle_pagar_tab, belle_gerencial_tab = st.tabs([
                 "Contas a receber",
                 "Contas a pagar",
@@ -7321,9 +7549,13 @@ if st.session_state.mostrar_modal_upload:
                 )
 
         st.markdown("---")
-        if st.button("✅  Fechar e aplicar dados", type="primary", use_container_width=True, key="fechar_modal"):
-            st.session_state.mostrar_modal_upload = False
-            st.rerun()
+        st.button(
+            "✅  Fechar e aplicar dados",
+            type="primary",
+            use_container_width=True,
+            key="fechar_modal",
+            on_click=fechar_upload_e_carregar_dashboard,
+        )
 
     st.stop()
 
@@ -11902,3 +12134,207 @@ elif st.session_state.pagina == "saldo":
             banco_seguro = html.escape(str(banco))
             rows += f"<tr><td><strong style='color:#E2E8F0'>{nome_seguro}</strong></td><td>{banco_seguro}</td><td>{tag_categoria(tipo_conta)}</td><td class='valor-pos'>{fmt_brl(s_ini)}</td><td class='valor-pos'>{fmt_brl(s_fin)}</td><td class='{cls_var}'>{sinal_c}{fmt_brl(var)}</td></tr>"
         st.markdown(f'<table class="fin-table"><thead><tr><th>Conta</th><th>Instituição</th><th>Tipo</th><th>Saldo Inicial</th><th>Saldo Final</th><th>Variação</th></tr></thead><tbody>{rows}</tbody></table>', unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("### Conciliação do fechamento")
+
+    despesas_conciliacao = (
+        float(pagamentos_periodo_global.get("fixos", 0.0))
+        + float(pagamentos_periodo_global.get("variaveis", 0.0))
+        + float(pagamentos_periodo_global.get("pro_labore", 0.0))
+    )
+    retiradas_conciliacao = float(
+        pagamentos_periodo_global.get("retiradas", 0.0)
+    )
+    antecipacao_lucro_conciliacao = float(
+        pagamentos_periodo_global.get("antecipacoes_lucro", 0.0)
+    )
+    resultado_conciliacao = (
+        float(recebimentos)
+        - despesas_conciliacao
+        - retiradas_conciliacao
+        - antecipacao_lucro_conciliacao
+    )
+    diferenca_conciliacao = variacao - resultado_conciliacao
+    diferenca_abs = abs(diferenca_conciliacao)
+    conciliacao_ok = diferenca_abs < 0.01
+    cor_diferenca = "green" if conciliacao_ok else "red"
+    sinal_resultado = "+" if resultado_conciliacao >= 0 else ""
+    sinal_diferenca = "+" if diferenca_conciliacao >= 0 else ""
+
+    c_var, c_res, c_dif = st.columns(3)
+    with c_var:
+        st.markdown(
+            f"""
+            <div class="kpi-card neutral">
+                <div class="kpi-label">Variação bancária</div>
+                <div class="kpi-value {cor_var}">{sinal_var}{fmt_brl(variacao)}</div>
+                <div class="kpi-footer">Saldo final menos saldo inicial</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with c_res:
+        st.markdown(
+            f"""
+            <div class="kpi-card purple">
+                <div class="kpi-label">Resultado do relatório</div>
+                <div class="kpi-value {'green' if resultado_conciliacao >= 0 else 'red'}">{sinal_resultado}{fmt_brl(resultado_conciliacao)}</div>
+                <div class="kpi-footer">Recebimentos - despesas - retiradas</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with c_dif:
+        st.markdown(
+            f"""
+            <div class="kpi-card {'green' if conciliacao_ok else 'red'}">
+                <div class="kpi-label">Diferença a explicar</div>
+                <div class="kpi-value {cor_diferenca}">{sinal_diferenca}{fmt_brl(diferenca_conciliacao)}</div>
+                <div class="kpi-footer">Variação bancária - resultado</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    if conciliacao_ok:
+        st.success("Conciliação fechada: a variação bancária bate com o resultado do relatório.")
+    else:
+        st.warning(
+            "Existe diferença entre a variação bancária e o resultado. "
+            "Confira abaixo os lançamentos que podem explicar essa diferença."
+        )
+
+    movimentos_conciliacao = pd.DataFrame()
+    if df_ofx_movimentos is not None and not df_ofx_movimentos.empty and periodo_valido:
+        movimentos_conciliacao = df_ofx_movimentos.copy()
+        movimentos_conciliacao["data"] = pd.to_datetime(
+            movimentos_conciliacao["data"],
+            errors="coerce",
+        )
+        movimentos_conciliacao = movimentos_conciliacao.dropna(subset=["data"])
+        movimentos_conciliacao = movimentos_conciliacao[
+            movimentos_conciliacao["data"].between(
+                inicio_periodo,
+                fim_periodo,
+                inclusive="both",
+            )
+        ].copy()
+        if filtro_banco_saldo != "Todos os bancos" and "_banco_ofx" in movimentos_conciliacao.columns:
+            movimentos_conciliacao = movimentos_conciliacao[
+                movimentos_conciliacao["_banco_ofx"].fillna("").astype(str).map(
+                    nome_banco_brasileiro
+                )
+                == filtro_banco_saldo
+            ].copy()
+
+    ajustes_rows = ""
+    if not movimentos_conciliacao.empty:
+        texto_mov = (
+            movimentos_conciliacao.get(
+                "memo",
+                pd.Series("", index=movimentos_conciliacao.index),
+            ).fillna("").astype(str)
+            + " "
+            + movimentos_conciliacao.get(
+                "descricao",
+                pd.Series("", index=movimentos_conciliacao.index),
+            ).fillna("").astype(str)
+            + " "
+            + movimentos_conciliacao.get(
+                "tipo_transacao",
+                pd.Series("", index=movimentos_conciliacao.index),
+            ).fillna("").astype(str)
+        )
+        texto_norm = texto_mov.map(normalizar_texto)
+        valor_mov = pd.to_numeric(
+            movimentos_conciliacao.get("valor", 0),
+            errors="coerce",
+        ).fillna(0)
+        regras_ajustes = [
+            (
+                r"transfer|transf|ted|doc|entre\s+contas",
+                "Transferência entre contas",
+                "Movimenta banco, mas não é resultado operacional.",
+            ),
+            (
+                r"invest|aplicac|aplica[cç][aã]o|resgate|renda\s+fixa|cdb",
+                "Investimento ou resgate",
+                "Muda o saldo, mas deve ficar separado da operação.",
+            ),
+            (
+                r"aporte|emprest|capital|financiamento",
+                "Aporte, empréstimo ou financiamento",
+                "Entrada ou saída financeira fora da operação.",
+            ),
+            (
+                r"antecip",
+                "Antecipação",
+                "Pode cair no banco em período diferente da venda.",
+            ),
+            (
+                r"saldo\s+do\s+dia|saldo\s+anterior|saldo",
+                "Linha de saldo",
+                "Linha informativa que não deve virar receita ou despesa.",
+            ),
+        ]
+        mascara_ajustes = pd.Series(False, index=movimentos_conciliacao.index)
+        tipo_ajuste = pd.Series("", index=movimentos_conciliacao.index)
+        impacto_ajuste = pd.Series("", index=movimentos_conciliacao.index)
+        for padrao, tipo, impacto in regras_ajustes:
+            match = texto_norm.str.contains(padrao, regex=True)
+            aplicar = match & ~mascara_ajustes
+            tipo_ajuste.loc[aplicar] = tipo
+            impacto_ajuste.loc[aplicar] = impacto
+            mascara_ajustes = mascara_ajustes | match
+
+        ajustes = movimentos_conciliacao[mascara_ajustes].copy()
+        if not ajustes.empty:
+            ajustes["_tipo_ajuste"] = tipo_ajuste.loc[ajustes.index]
+            ajustes["_impacto_ajuste"] = impacto_ajuste.loc[ajustes.index]
+            ajustes["_valor_abs"] = valor_mov.loc[ajustes.index].abs()
+            ajustes = ajustes.sort_values("_valor_abs", ascending=False).head(20)
+            for _, row in ajustes.iterrows():
+                data_txt = pd.to_datetime(row.get("data"), errors="coerce")
+                data_txt = data_txt.strftime("%d/%m/%y") if pd.notna(data_txt) else "-"
+                descricao_txt = html.escape(
+                    str(
+                        row.get("memo")
+                        or row.get("descricao")
+                        or row.get("tipo_transacao")
+                        or "Movimento bancário"
+                    )
+                )
+                valor_linha = float(pd.to_numeric(row.get("valor", 0), errors="coerce") or 0)
+                classe_valor = "valor-pos" if valor_linha >= 0 else "valor-neg"
+                ajustes_rows += (
+                    f"<tr><td>{data_txt}</td><td>{descricao_txt}</td>"
+                    f"<td class='{classe_valor}'>{fmt_brl(valor_linha, sinal=True)}</td>"
+                    f"<td>{tag_categoria(row['_tipo_ajuste'])}</td>"
+                    f"<td>{html.escape(str(row['_impacto_ajuste']))}</td></tr>"
+                )
+
+    if ajustes_rows:
+        st.markdown(
+            f"""
+            <table class="fin-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Descrição</th>
+                        <th>Valor</th>
+                        <th>Tipo sugerido</th>
+                        <th>Impacto na conciliação</th>
+                    </tr>
+                </thead>
+                <tbody>{ajustes_rows}</tbody>
+            </table>
+            """,
+            unsafe_allow_html=True,
+        )
+    elif not conciliacao_ok:
+        st.info(
+            "Não encontrei transferências, investimentos ou antecipações óbvias "
+            "no extrato do período. A diferença pode estar em lançamento sem "
+            "classificação, arquivo faltante ou saldo informado manualmente."
+        )
