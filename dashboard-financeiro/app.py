@@ -896,8 +896,17 @@ st.markdown(
         transform: none !important;
         border-radius: 24px !important;
         overflow: hidden !important;
+        background: #0f1120 !important;
         border: 1px solid rgba(160, 165, 255, .28) !important;
         box-shadow: 0 24px 70px rgba(0, 0, 0, .48) !important;
+    }
+    [role="dialog"]:has(.assistant-chat-panel) > div,
+    div[role="dialog"]:has(.assistant-chat-panel) > div,
+    [role="dialog"]:has(.assistant-chat-panel) [data-testid="stVerticalBlock"],
+    div[role="dialog"]:has(.assistant-chat-panel) [data-testid="stVerticalBlock"],
+    [role="dialog"]:has(.assistant-chat-panel) [data-testid="stForm"],
+    div[role="dialog"]:has(.assistant-chat-panel) [data-testid="stForm"] {
+        background: #0f1120 !important;
     }
     [role="dialog"]:has(.assistant-chat-panel) [data-testid="stVerticalBlock"],
     div[role="dialog"]:has(.assistant-chat-panel) [data-testid="stVerticalBlock"] {
@@ -955,6 +964,7 @@ st.markdown(
         padding: 1.1rem !important;
         width: 100% !important;
         box-sizing: border-box !important;
+        background: #0f1120 !important;
     }
     div[role="dialog"]:has(.assistant-chat-panel)
     div[data-testid="InputInstructions"] {
