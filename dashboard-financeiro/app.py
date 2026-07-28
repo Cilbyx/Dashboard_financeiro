@@ -674,7 +674,9 @@ st.markdown(
     section[data-testid="stSidebar"] .st-key-btn_upload button,
     section[data-testid="stSidebar"] .st-key-sidebar_logout button {
         width: 100% !important;
+        display: flex !important;
         justify-content: flex-start !important;
+        align-items: center !important;
         min-height: 52px !important;
         padding: .75rem 1rem !important;
         color: #e7e9f3 !important;
@@ -684,11 +686,23 @@ st.markdown(
         text-align: left !important;
         font-size: 1rem !important;
     }
+    section[data-testid="stSidebar"] [class*="st-key-nav_"] button > div,
+    section[data-testid="stSidebar"] .st-key-btn_upload button > div,
+    section[data-testid="stSidebar"] .st-key-sidebar_logout button > div,
+    section[data-testid="stSidebar"] [class*="st-key-nav_"] button [data-testid="stMarkdownContainer"],
+    section[data-testid="stSidebar"] .st-key-btn_upload button [data-testid="stMarkdownContainer"],
+    section[data-testid="stSidebar"] .st-key-sidebar_logout button [data-testid="stMarkdownContainer"] {
+        width: 100% !important;
+        display: block !important;
+        text-align: left !important;
+        margin: 0 !important;
+    }
     section[data-testid="stSidebar"] [class*="st-key-nav_"] button p,
     section[data-testid="stSidebar"] .st-key-btn_upload button p,
     section[data-testid="stSidebar"] .st-key-sidebar_logout button p {
         width: 100% !important;
         text-align: left !important;
+        margin: 0 !important;
         font-size: 1rem !important;
         line-height: 1.35 !important;
     }
