@@ -673,13 +673,24 @@ st.markdown(
     section[data-testid="stSidebar"] [class*="st-key-nav_"] button,
     section[data-testid="stSidebar"] .st-key-btn_upload button,
     section[data-testid="stSidebar"] .st-key-sidebar_logout button {
-        justify-content: center !important;
-        min-height: 44px !important;
-        padding: .55rem .8rem !important;
+        width: 100% !important;
+        justify-content: flex-start !important;
+        min-height: 52px !important;
+        padding: .75rem 1rem !important;
         color: #e7e9f3 !important;
         background: transparent !important;
         border: 1px solid transparent !important;
         box-shadow: none !important;
+        text-align: left !important;
+        font-size: 1rem !important;
+    }
+    section[data-testid="stSidebar"] [class*="st-key-nav_"] button p,
+    section[data-testid="stSidebar"] .st-key-btn_upload button p,
+    section[data-testid="stSidebar"] .st-key-sidebar_logout button p {
+        width: 100% !important;
+        text-align: left !important;
+        font-size: 1rem !important;
+        line-height: 1.35 !important;
     }
     section[data-testid="stSidebar"] [class*="st-key-nav_"] button:hover,
     section[data-testid="stSidebar"] .st-key-btn_upload button:hover,
@@ -845,6 +856,9 @@ st.markdown(
         background: center / contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' fill='none' stroke='white' stroke-width='4.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 32v-6c0-9.4 7.6-17 17-17s17 7.6 17 17v6'/%3E%3Cpath d='M15 29h-3a4 4 0 0 0-4 4v6a4 4 0 0 0 4 4h3V29Z'/%3E%3Cpath d='M49 29h3a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4h-3V29Z'/%3E%3Cpath d='M20 33c5-1 9-4 12-9 3 5 8 8 14 9'/%3E%3Cpath d='M20 35c0 9 5 16 12 16s12-7 12-16'/%3E%3Cpath d='M23 55c3-2 5-4 5-7'/%3E%3Cpath d='M41 55c-3-2-5-4-5-7'/%3E%3Cpath d='M17 61c1-5 4-8 10-9'/%3E%3Cpath d='M47 61c-1-5-4-8-10-9'/%3E%3Cpath d='M28 39h8'/%3E%3Cpath d='M44 44c0 4-3 6-8 6'/%3E%3Cpath d='M36 50h-5'/%3E%3C/svg%3E") !important;
     }
     .assistant-welcome-card {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
         padding: 1.25rem 1.35rem;
         margin: .15rem 0 1rem;
         border-radius: 18px;
@@ -862,13 +876,18 @@ st.markdown(
     }
     .assistant-welcome-card .assistant-title {
         color: #ffffff !important;
-        font-size: 1.35rem;
+        font-size: 1.24rem;
         line-height: 1.22;
         font-weight: 900;
     }
+    [role="dialog"]:has(.assistant-chat-panel),
     div[role="dialog"]:has(.assistant-chat-panel) {
         position: fixed !important;
         inset: auto 24px 104px auto !important;
+        left: auto !important;
+        top: auto !important;
+        right: 24px !important;
+        bottom: 104px !important;
         width: min(420px, calc(100vw - 32px)) !important;
         max-width: min(420px, calc(100vw - 32px)) !important;
         max-height: min(720px, calc(100vh - 132px)) !important;
@@ -879,6 +898,29 @@ st.markdown(
         overflow: hidden !important;
         border: 1px solid rgba(160, 165, 255, .28) !important;
         box-shadow: 0 24px 70px rgba(0, 0, 0, .48) !important;
+    }
+    [role="dialog"]:has(.assistant-chat-panel) [data-testid="stVerticalBlock"],
+    div[role="dialog"]:has(.assistant-chat-panel) [data-testid="stVerticalBlock"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        gap: .85rem !important;
+    }
+    [role="dialog"]:has(.assistant-chat-panel) [data-testid="stForm"],
+    div[role="dialog"]:has(.assistant-chat-panel) [data-testid="stForm"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    [role="dialog"]:has(.assistant-chat-panel) [data-testid="stTextInput"],
+    div[role="dialog"]:has(.assistant-chat-panel) [data-testid="stTextInput"] {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    [role="dialog"]:has(.assistant-chat-panel) [data-testid="stTextInput"] input,
+    div[role="dialog"]:has(.assistant-chat-panel) [data-testid="stTextInput"] input {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     div[role="dialog"]:has(.assistant-chat-panel) button[aria-label="Close"] {
         display: none !important;
@@ -911,6 +953,8 @@ st.markdown(
         max-height: min(720px, calc(100vh - 132px)) !important;
         overflow-y: auto !important;
         padding: 1.1rem !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
     }
     div[role="dialog"]:has(.assistant-chat-panel)
     div[data-testid="InputInstructions"] {
@@ -945,6 +989,10 @@ st.markdown(
         }
         div[role="dialog"]:has(.assistant-chat-panel) {
             inset: auto 12px 84px 12px !important;
+            left: 12px !important;
+            right: 12px !important;
+            top: auto !important;
+            bottom: 84px !important;
             width: auto !important;
             max-width: none !important;
             max-height: calc(100vh - 104px) !important;
