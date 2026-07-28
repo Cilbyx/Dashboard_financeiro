@@ -1,4 +1,3 @@
-from datetime import datetime
 from html import escape
 
 import streamlit as st
@@ -17,10 +16,16 @@ def render_login(User, login_user, reset_password_with_code, logger):
             display: none !important;
         }
 
-        html, body, [data-testid="stAppViewContainer"], .stApp, .stMain {
+        html, body, .stApp, .stMain {
             width: 100% !important;
             min-height: 100% !important;
             background: #0D0D1A !important;
+        }
+
+        [data-testid="stAppViewContainer"] {
+            width: 100% !important;
+            min-height: 100dvh !important;
+            background: linear-gradient(90deg, #0D0D1A 0 42%, #11112A 42% 100%) !important;
         }
 
         .stMainBlockContainer, .block-container {
@@ -32,9 +37,17 @@ def render_login(User, login_user, reset_password_with_code, logger):
         }
 
         div[data-testid="stHorizontalBlock"]:has(.login-anchor) {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100dvh !important;
+            margin: 0 !important;
+            padding: 0 !important;
             gap: 0 !important;
             min-height: 100dvh !important;
             align-items: stretch !important;
+            overflow: hidden !important;
+            z-index: 1 !important;
         }
 
         div[data-testid="stColumn"]:has(.login-anchor),
@@ -48,12 +61,41 @@ def render_login(User, login_user, reset_password_with_code, logger):
         }
 
         div[data-testid="stColumn"]:has(.showcase-anchor) {
+            position: relative !important;
+            overflow: hidden !important;
             background:
-                radial-gradient(circle at 100% 10%,
-                    rgba(83,74,183,.18) 0 190px, transparent 191px),
-                radial-gradient(circle at 5% 95%,
-                    rgba(127,119,221,.08) 0 150px, transparent 151px),
+                linear-gradient(135deg, rgba(83, 74, 183, .20), transparent 34%),
+                linear-gradient(220deg, rgba(127, 119, 221, .24), transparent 42%),
                 #11112A;
+        }
+
+        div[data-testid="stColumn"]:has(.showcase-anchor)::before {
+            content: "" !important;
+            position: absolute !important;
+            inset: 0 !important;
+            pointer-events: none !important;
+            background:
+                radial-gradient(circle at 23% 25%, rgba(127, 119, 221, .22) 0 9%, transparent 9.5%),
+                radial-gradient(circle at 75% 72%, rgba(83, 74, 183, .18) 0 17%, transparent 17.5%),
+                repeating-radial-gradient(ellipse at 15% 85%,
+                    rgba(226, 232, 240, .14) 0 1px,
+                    transparent 1px 16px);
+            opacity: .65;
+        }
+
+        div[data-testid="stColumn"]:has(.showcase-anchor)::after {
+            content: "" !important;
+            position: absolute !important;
+            top: 56px !important;
+            right: 64px !important;
+            width: 120px !important;
+            height: 180px !important;
+            pointer-events: none !important;
+            opacity: .62;
+            background-image:
+                radial-gradient(circle, rgba(226, 232, 240, .82) 1.4px, transparent 1.6px);
+            background-size: 14px 14px;
+            mask-image: linear-gradient(180deg, #000, transparent);
         }
 
         div[data-testid="stColumn"]:has(.login-anchor) > div,
@@ -71,6 +113,8 @@ def render_login(User, login_user, reset_password_with_code, logger):
         div[data-testid="stColumn"]:has(.showcase-anchor) > div {
             align-items: center !important;
             padding: 40px !important;
+            position: relative !important;
+            z-index: 2 !important;
         }
 
         .login-logo {
@@ -132,6 +176,11 @@ def render_login(User, login_user, reset_password_with_code, logger):
         }
 
         div[data-testid="stColumn"]:has(.login-anchor)
+        div[data-testid="InputInstructions"] {
+            display: none !important;
+        }
+
+        div[data-testid="stColumn"]:has(.login-anchor)
         div[data-testid="stFormSubmitButton"] button {
             width: 100% !important;
             color: #FFF !important;
@@ -165,10 +214,11 @@ def render_login(User, login_user, reset_password_with_code, logger):
             width: min(100%, 320px);
             padding: 28px 24px;
             color: #E2E8F0;
-            background: #0D0D1A;
-            border: 1px solid #2A2A4A;
+            background: rgba(13, 13, 26, .78);
+            border: 1px solid rgba(127, 119, 221, .34);
             border-radius: 20px;
-            box-shadow: 0 24px 60px rgba(0,0,0,.5);
+            box-shadow: 0 28px 70px rgba(0,0,0,.46);
+            backdrop-filter: blur(12px);
         }
 
         .showcase-badge {
@@ -272,6 +322,10 @@ def render_login(User, login_user, reset_password_with_code, logger):
                 display: none !important;
             }
 
+            [data-testid="stAppViewContainer"] {
+                background: #0D0D1A !important;
+            }
+
             div[data-testid="stColumn"]:has(.login-anchor) > div {
                 padding: 30px 24px !important;
             }
@@ -281,8 +335,6 @@ def render_login(User, login_user, reset_password_with_code, logger):
         unsafe_allow_html=True,
     )
 
-    hour = datetime.now().hour
-    greeting = "Olá!"
     login_column, showcase_column = st.columns([42, 58], gap=None)
 
     with login_column:
@@ -293,7 +345,7 @@ def render_login(User, login_user, reset_password_with_code, logger):
                 <div class="login-logo-icon">💰</div>
                 <span class="login-logo-text">Dashboard Financeiro</span>
             </div>
-            <div class="login-greeting">{greeting}</div>
+            <div class="login-greeting">Olá!</div>
             <div class="login-subtitle">Seja bem-vindo de volta</div>
             """,
             unsafe_allow_html=True,
